@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical } from 'lucide-react';
+import { db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
 function compressImage(file, maxSize = 96) {
@@ -289,13 +291,31 @@ export default function App() {
     return initialProducts;
   });
 
+  // Firestore에서 products 로드 (앱 시작 시 1회)
+  const firestoreLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreLoaded.current) return;
+    firestoreLoaded.current = true;
+    getDoc(doc(db, 'settings', 'products')).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data().list;
+        if (Array.isArray(data) && data.length > 0) {
+          setProducts(data);
+          localStorage.setItem('label_products', JSON.stringify(data));
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('label_inventory', JSON.stringify(labels));
     localStorage.setItem('label_data_version', String(DATA_VERSION));
   }, [labels]);
 
+  // localStorage + Firestore 동시 저장
   useEffect(() => {
     localStorage.setItem('label_products', JSON.stringify(products));
+    setDoc(doc(db, 'settings', 'products'), { list: products }).catch(() => {});
   }, [products]);
 
   // 이미지 미리보기 모달 상태

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save } from 'lucide-react';
 import { db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -535,8 +535,40 @@ export default function App() {
     }
   };
 
+  // --- 발주 저장 리스트 ---
+  const [savedOrders, setSavedOrders] = useState(() => {
+    const saved = localStorage.getItem('label_saved_orders');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [viewOrder, setViewOrder] = useState(null);
+  const [viewOrderEditMode, setViewOrderEditMode] = useState(false);
+  const [viewOrderEdits, setViewOrderEdits] = useState({});
+  const [openOrderMenuId, setOpenOrderMenuId] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders));
+    setDoc(doc(db, 'settings', 'savedOrders'), { list: savedOrders }).catch(() => {});
+  }, [savedOrders]);
+
+  const firestoreOrdersLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreOrdersLoaded.current) return;
+    firestoreOrdersLoaded.current = true;
+    getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data().list;
+        if (Array.isArray(data) && data.length > 0) {
+          setSavedOrders(data);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   // --- [3] 발주 계산기 함수 ---
   const [calcTarget, setCalcTarget] = useState('');
+  const [calcSearchText, setCalcSearchText] = useState('');
+  const [calcSearchOpen, setCalcSearchOpen] = useState(false);
+  const calcSearchRef = useRef(null);
   const [calcColorText, setCalcColorText] = useState('');
   const [calcSizeText, setCalcSizeText] = useState('');
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
@@ -602,6 +634,12 @@ export default function App() {
             </button>
             <button onClick={() => setActiveTab('calc')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'calc' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               <Calculator size={18} /> 발주 계산기
+            </button>
+            <button onClick={() => setActiveTab('orders')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'orders' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <ClipboardList size={18} /> 저장리스트
+              {savedOrders.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{savedOrders.length}</span>
+              )}
             </button>
           </div>
         </div>
@@ -1020,12 +1058,33 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">어떤 상품을 생산하시나요?</label>
-                  <select value={calcTarget} onChange={e => { setCalcTarget(e.target.value); setCalcResult(null); }} className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                    <option value="">-- 등록된 상품 선택 --</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>[{p.brand}] {p.name}</option>
-                    ))}
-                  </select>
+                  <div className="relative" ref={calcSearchRef}>
+                    <input
+                      type="text"
+                      value={calcSearchText}
+                      onChange={e => { setCalcSearchText(e.target.value); setCalcSearchOpen(true); if (!e.target.value) { setCalcTarget(''); setCalcResult(null); } }}
+                      onFocus={() => setCalcSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setCalcSearchOpen(false), 150)}
+                      placeholder="상품명 검색..."
+                      className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    {calcSearchOpen && (
+                      <ul className="absolute z-50 w-full mt-1 bg-white border border-emerald-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                        {products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).length === 0
+                          ? <li className="px-3 py-2 text-sm text-slate-400">검색 결과 없음</li>
+                          : products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).map(p => (
+                            <li
+                              key={p.id}
+                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); }}
+                              className={`px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 ${String(p.id) === calcTarget ? 'bg-emerald-100 font-medium' : ''}`}
+                            >
+                              [{p.brand}] {p.name}
+                            </li>
+                          ))
+                        }
+                      </ul>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">공장명</label>
@@ -1104,49 +1163,102 @@ export default function App() {
             </div>
 
             {calcResult && (
-              <div className="mt-8">
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+              <div className="mt-8 space-y-6">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <AlertCircle className="text-amber-500" /> 예상 발주 리스트
+                  <span className="text-sm font-normal text-slate-400">— 공급처별</span>
                 </h3>
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-600">
-                        <th className="p-3 font-medium">라벨명 (공급처)</th>
-                        <th className="p-3 font-medium text-right bg-slate-100">생산 필요량</th>
-                        <th className="p-3 font-medium text-right bg-blue-50">현재고</th>
-                        <th className="p-3 font-medium text-right bg-red-50 text-red-600">발주 필요 수량</th>
-                        <th className="p-3 font-medium text-right">예상 발주 금액</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {calcResult.details.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-3">
-                            <div className="font-medium text-slate-800 flex items-center gap-2">
-                              {item.img && <img src={item.img} alt="img" className="w-8 h-8 rounded object-cover" />}
-                              {item.name}
-                            </div>
-                            <div className="text-xs text-slate-500">{item.code} / {item.vendor}</div>
-                          </td>
-                          <td className="p-3 text-right bg-slate-50/50">{item.needQty.toLocaleString()}개</td>
-                          <td className="p-3 text-right bg-blue-50/50 text-blue-700">{item.stock.toLocaleString()}개</td>
-                          <td className="p-3 text-right bg-red-50/50 font-bold text-red-600">
-                            {item.shortage > 0 ? `${item.shortage.toLocaleString()}개 부족` : '재고 충분'}
-                          </td>
-                          <td className="p-3 text-right font-medium">
-                            {item.shortage > 0 ? `${item.cost.toLocaleString()}원` : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-slate-800 text-white">
-                        <td colSpan="4" className="p-4 text-right font-medium">총 예상 발주 비용 합계</td>
-                        <td className="p-4 text-right font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                {(() => {
+                  const todayStr = (() => { const d = new Date(); return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`; })();
+                  // 공급처별 그룹핑
+                  const groups = {};
+                  calcResult.details.forEach(item => {
+                    const v = item.vendor || '(공급처 미입력)';
+                    if (!groups[v]) groups[v] = [];
+                    groups[v].push(item);
+                  });
+                  return Object.entries(groups).map(([vendor, items]) => {
+                    const vendorCost = items.filter(i => i.shortage > 0).reduce((s, i) => s + i.cost, 0);
+                    return (
+                      <div key={vendor} className="border border-slate-200 rounded-lg overflow-hidden">
+                        <div className="bg-slate-700 text-white px-4 py-2 flex items-center justify-between">
+                          <span className="font-bold text-sm">📦 {vendor}</span>
+                          <span className="text-xs text-slate-300">발주 필요 {items.filter(i => i.shortage > 0).length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{vendorCost.toLocaleString()}원</span></span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-sm">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                                <th className="p-3 font-medium whitespace-nowrap">날짜</th>
+                                <th className="p-3 font-medium whitespace-nowrap">발주자</th>
+                                <th className="p-3 font-medium whitespace-nowrap">공장</th>
+                                <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
+                                <th className="p-3 font-medium whitespace-nowrap">이미지</th>
+                                <th className="p-3 font-medium whitespace-nowrap">상품명</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">수량</th>
+                                <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {items.map((item, idx) => (
+                                <tr key={idx} className={item.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50 opacity-40'}>
+                                  <td className="p-3 text-slate-400 whitespace-nowrap">{todayStr}</td>
+                                  <td className="p-3 text-slate-700">{calcOrderer || '-'}</td>
+                                  <td className="p-3 text-slate-700">{calcFactory || '-'}</td>
+                                  <td className="p-3">
+                                    <div className="font-medium text-slate-800">{item.name}</div>
+                                    <div className="text-xs text-slate-400">{item.code}</div>
+                                  </td>
+                                  <td className="p-3">
+                                    {item.img
+                                      ? <img src={item.img} alt="img" className="w-10 h-10 rounded object-cover border border-slate-200" />
+                                      : <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center"><ImageIcon size={14} className="text-slate-300" /></div>
+                                    }
+                                  </td>
+                                  <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
+                                  <td className="p-3 text-center text-slate-600">{item.size || '-'}</td>
+                                  <td className="p-3 text-right font-bold">
+                                    {item.shortage > 0
+                                      ? <span className="text-red-600">{item.shortage.toLocaleString()}개</span>
+                                      : <span className="text-emerald-600 text-xs font-normal">재고충분</span>
+                                    }
+                                  </td>
+                                  <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{calcNote || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+                <div className="border border-slate-200 rounded-lg bg-slate-800 text-white px-4 py-3 flex justify-between items-center">
+                  <span className="font-medium text-slate-300">총 예상 발주 비용 합계</span>
+                  <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    onClick={() => {
+                      const order = {
+                        id: Date.now(),
+                        date: new Date().toLocaleString('ko-KR'),
+                        productName: calcSearchText,
+                        factory: calcFactory,
+                        orderer: calcOrderer,
+                        note: calcNote,
+                        totalCost: calcResult.totalCost,
+                        totalQty: calcResult.details.reduce((s, d) => s + d.need, 0),
+                        details: calcResult.details,
+                      };
+                      setSavedOrders(prev => [order, ...prev]);
+                      alert('발주 내용이 저장되었습니다!');
+                    }}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
+                  >
+                    <Save size={18} /> 발주내용 저장
+                  </button>
                 </div>
               </div>
             )}
@@ -1154,6 +1266,211 @@ export default function App() {
         )}
 
       </div>
+
+      {/* [4] 저장리스트 탭 */}
+      {activeTab === 'orders' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <ClipboardList size={22} className="text-orange-500" /> 발주 저장리스트
+              <span className="text-sm font-normal text-slate-400">({savedOrders.length}건)</span>
+            </h2>
+            {savedOrders.length > 0 && (
+              <button onClick={() => { if (window.confirm('저장리스트를 전체 삭제할까요?')) setSavedOrders([]); }} className="text-sm text-red-400 hover:text-red-600 font-medium">전체 삭제</button>
+            )}
+          </div>
+
+          {savedOrders.length === 0 ? (
+            <div className="text-center py-20 text-slate-400">
+              <ClipboardList size={40} className="mx-auto mb-3 opacity-30" />
+              <p>저장된 발주 내용이 없습니다.</p>
+              <p className="text-sm mt-1">발주 계산기에서 계산 후 저장해보세요.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto border border-slate-200 rounded-lg">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="p-3 font-semibold text-slate-600">저장일시</th>
+                    <th className="p-3 font-semibold text-slate-600">상품명</th>
+                    <th className="p-3 font-semibold text-slate-600">공장</th>
+                    <th className="p-3 font-semibold text-slate-600">발주자</th>
+                    <th className="p-3 font-semibold text-slate-600 text-center">발주 라벨 수</th>
+                    <th className="p-3 font-semibold text-slate-600 text-right">예상 비용</th>
+                    <th className="p-3 font-semibold text-slate-600 text-center">상세</th>
+                    <th className="p-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {savedOrders.map((order, idx) => (
+                    <React.Fragment key={order.id}>
+                      <tr className="hover:bg-slate-50">
+                        <td className="p-3 text-slate-400 text-xs whitespace-nowrap">{order.date}</td>
+                        <td className="p-3 font-medium text-slate-800">{order.productName || '(미선택)'}</td>
+                        <td className="p-3 text-slate-600">{order.factory || '-'}</td>
+                        <td className="p-3 text-slate-600">{order.orderer || '-'}</td>
+                        <td className="p-3 text-center text-slate-700">{order.details?.filter(d => d.shortage > 0).length || 0}종</td>
+                        <td className="p-3 text-right font-bold text-red-600">{order.totalCost?.toLocaleString()}원</td>
+                        <td className="p-3 text-center">
+                          <button onClick={() => setViewOrder(order)} className="text-xs text-indigo-500 hover:text-indigo-700 underline">▼ 보기</button>
+                        </td>
+                        <td className="p-3 text-center relative">
+                          <button onClick={() => setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id)} className="text-slate-400 hover:text-slate-600 p-1">
+                            <MoreVertical size={16} />
+                          </button>
+                          {openOrderMenuId === order.id && (
+                            <>
+                              <div className="fixed inset-0 z-20" onClick={() => setOpenOrderMenuId(null)} />
+                              <div className="absolute right-0 top-10 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28">
+                                <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                  <Pencil size={14} /> 수정
+                                </button>
+                                <button onClick={() => { setOpenOrderMenuId(null); setSavedOrders(prev => prev.filter((_, i) => i !== idx)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
+                                  <Trash2 size={14} /> 삭제
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 발주 리스트 상세 모달 */}
+      {viewOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setViewOrder(null); setViewOrderEditMode(false); }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+              <div className="flex-1 mr-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-lg font-bold text-slate-800">📋 예상 발주 리스트</h3>
+                  {!viewOrderEditMode && (
+                    <button onClick={() => { setViewOrderEditMode(true); setViewOrderEdits({ orderer: viewOrder.orderer || '', factory: viewOrder.factory || '', note: viewOrder.note || '', details: (viewOrder.details || []).map(d => ({ ...d })), _idx: savedOrders.findIndex(o => o.id === viewOrder.id) }); }} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 border border-slate-200 rounded px-2 py-0.5 hover:border-indigo-300">
+                      <Pencil size={11} /> 수정
+                    </button>
+                  )}
+                </div>
+                {viewOrderEditMode ? (
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-xs text-slate-400">{viewOrder.date}</span>
+                    <label className="flex items-center gap-1 text-xs text-slate-500">발주자 <input value={viewOrderEdits.orderer} onChange={e => setViewOrderEdits(p => ({ ...p, orderer: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
+                    <label className="flex items-center gap-1 text-xs text-slate-500">공장 <input value={viewOrderEdits.factory} onChange={e => setViewOrderEdits(p => ({ ...p, factory: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
+                    <label className="flex items-center gap-1 text-xs text-slate-500">특이사항 <input value={viewOrderEdits.note} onChange={e => setViewOrderEdits(p => ({ ...p, note: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
+                    <button onClick={() => {
+                      const newDetails = (viewOrderEdits.details || viewOrder.details || []).map(({ _globalIdx, ...rest }) => rest);
+                      const newTotalCost = newDetails.reduce((s, d) => s + (d.shortage > 0 ? (d.cost || 0) : 0), 0);
+                      const updated = { ...viewOrder, orderer: viewOrderEdits.orderer, factory: viewOrderEdits.factory, note: viewOrderEdits.note, details: newDetails, totalCost: newTotalCost };
+                      setSavedOrders(prev => prev.map((o, i) => i === viewOrderEdits._idx ? updated : o));
+                      setViewOrder(updated);
+                      setViewOrderEditMode(false);
+                    }} className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3 py-1 rounded">저장</button>
+                    <button onClick={() => setViewOrderEditMode(false)} className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">취소</button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">{viewOrder.date} &nbsp;|&nbsp; 발주자: {viewOrder.orderer || '-'} &nbsp;|&nbsp; 공장: {viewOrder.factory || '-'}</p>
+                )}
+              </div>
+              <button onClick={() => { setViewOrder(null); setViewOrderEditMode(false); }} className="text-slate-400 hover:text-red-500 flex-shrink-0"><X size={20} /></button>
+            </div>
+            <div className="overflow-y-auto flex-1 p-6 space-y-5">
+              {(() => {
+                const dateStr = (() => {
+                  const raw = viewOrder.date || '';
+                  const d = new Date(raw);
+                  if (isNaN(d)) return raw.slice(0,8);
+                  return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+                })();
+                const activeDetails = viewOrderEditMode && viewOrderEdits.details ? viewOrderEdits.details : (viewOrder.details || []);
+                const groups = {};
+                activeDetails.forEach((d, globalIdx) => {
+                  const v = d.vendor || '(공급처 미입력)';
+                  if (!groups[v]) groups[v] = [];
+                  groups[v].push({ ...d, _globalIdx: globalIdx });
+                });
+                return Object.entries(groups).map(([vendor, items]) => {
+                  const needItems = items.filter(i => i.shortage > 0);
+                  const vendorCost = needItems.reduce((s,i) => s + (i.cost || 0), 0);
+                  return (
+                    <div key={vendor} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="bg-slate-700 text-white px-4 py-2 flex items-center justify-between text-sm">
+                        <span className="font-bold">📦 {vendor}</span>
+                        <span className="text-xs text-slate-300">발주 필요 {needItems.length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{vendorCost.toLocaleString()}원</span></span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                              <th className="p-3 font-medium whitespace-nowrap">날짜</th>
+                              <th className="p-3 font-medium whitespace-nowrap">발주자</th>
+                              <th className="p-3 font-medium whitespace-nowrap">공장</th>
+                              <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
+                              <th className="p-3 font-medium whitespace-nowrap">이미지</th>
+                              <th className="p-3 font-medium whitespace-nowrap">상품명</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {items.map((d, i) => (
+                              <tr key={i} className={d.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50 opacity-40'}>
+                                <td className="p-3 text-slate-400 whitespace-nowrap">{dateStr}</td>
+                                <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.orderer || '-') : (viewOrder.orderer || '-')}</td>
+                                <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.factory || '-') : (viewOrder.factory || '-')}</td>
+                                <td className="p-3">
+                                  <div className="font-medium text-slate-800">{d.labelName || d.name}</div>
+                                  <div className="text-xs text-slate-400">{d.code}</div>
+                                </td>
+                                <td className="p-3">
+                                  {d.img
+                                    ? <img src={d.img} alt="" className="w-10 h-10 rounded object-cover border border-slate-200" />
+                                    : <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center"><ImageIcon size={14} className="text-slate-300" /></div>
+                                  }
+                                </td>
+                                <td className="p-3 text-slate-700">{viewOrder.productName || '-'}</td>
+                                <td className="p-3 text-center text-slate-600">{d.size || '-'}</td>
+                                <td className="p-3 text-right font-bold">
+                                  {viewOrderEditMode
+                                    ? <input
+                                        type="number"
+                                        min="0"
+                                        value={d.shortage}
+                                        onChange={e => setViewOrderEdits(prev => {
+                                          const newDetails = [...prev.details];
+                                          newDetails[d._globalIdx] = { ...newDetails[d._globalIdx], shortage: parseInt(e.target.value) || 0 };
+                                          return { ...prev, details: newDetails };
+                                        })}
+                                        className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300"
+                                      />
+                                    : d.shortage > 0
+                                      ? <span className="text-red-600">{d.shortage.toLocaleString()}개</span>
+                                      : <span className="text-emerald-600 text-xs font-normal">재고충분</span>
+                                  }
+                                </td>
+                                <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrderEditMode ? (viewOrderEdits.note || '-') : (viewOrder.note || '-')}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              <div className="bg-slate-800 text-white rounded-lg px-5 py-3 flex justify-between items-center">
+                <span className="text-slate-300 font-medium">총 예상 발주 비용 합계</span>
+                <span className="text-emerald-400 font-bold text-lg">{viewOrder.totalCost?.toLocaleString()} 원</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 상품 수정 모달 */}
       {editProduct && (

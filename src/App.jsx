@@ -291,35 +291,73 @@ export default function App() {
     return initialProducts;
   });
 
-  // Firestore 로드 완료 후에만 저장 허용 (race condition 방지)
-  const firestoreLoaded = useRef(false);
-  const productsCanSave = useRef(false);
+  // --- Labels Firestore 동기화 ---
+  const labelsCanSave = useRef(false);
+  const firestoreLabelsLoaded = useRef(false);
   useEffect(() => {
-    if (firestoreLoaded.current) return;
-    firestoreLoaded.current = true;
-    getDoc(doc(db, 'settings', 'products')).then(snap => {
-      if (snap.exists()) {
+    if (firestoreLabelsLoaded.current) return;
+    firestoreLabelsLoaded.current = true;
+    const currentLabels = labels;
+    getDoc(doc(db, 'settings', 'labels')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
         const data = snap.data().list;
-        if (Array.isArray(data) && data.length > 0) {
-          setProducts(data);
-          localStorage.setItem('label_products', JSON.stringify(data));
-        }
+        setLabels(data);
+        localStorage.setItem('label_inventory', JSON.stringify(data));
+        localStorage.setItem('label_data_version', String(DATA_VERSION));
+      } else {
+        // Firestore 비어있음 → 로컬 데이터 업로드
+        try {
+          const clean = JSON.parse(JSON.stringify(currentLabels));
+          setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
+        } catch(e) {}
       }
     }).catch(() => {}).finally(() => {
-      productsCanSave.current = true;
+      labelsCanSave.current = true;
     });
   }, []);
 
   useEffect(() => {
     localStorage.setItem('label_inventory', JSON.stringify(labels));
     localStorage.setItem('label_data_version', String(DATA_VERSION));
+    if (!labelsCanSave.current) return;
+    try {
+      const clean = JSON.parse(JSON.stringify(labels));
+      setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
+    } catch(e) {}
   }, [labels]);
+
+  // Firestore 로드 완료 후에만 저장 허용 (race condition 방지)
+  const firestoreLoaded = useRef(false);
+  const productsCanSave = useRef(false);
+  useEffect(() => {
+    if (firestoreLoaded.current) return;
+    firestoreLoaded.current = true;
+    const currentProducts = products;
+    getDoc(doc(db, 'settings', 'products')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+        const data = snap.data().list;
+        setProducts(data);
+        localStorage.setItem('label_products', JSON.stringify(data));
+      } else {
+        // Firestore 비어있음 → 로컬 데이터 업로드
+        try {
+          const clean = JSON.parse(JSON.stringify(currentProducts));
+          setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => {
+      productsCanSave.current = true;
+    });
+  }, []);
 
   // Firestore 로드 완료 후에만 저장
   useEffect(() => {
     if (!productsCanSave.current) return;
-    localStorage.setItem('label_products', JSON.stringify(products));
-    setDoc(doc(db, 'settings', 'products'), { list: products }).catch(() => {});
+    try { localStorage.setItem('label_products', JSON.stringify(products)); } catch(e) {}
+    try {
+      const clean = JSON.parse(JSON.stringify(products));
+      setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
+    } catch(e) {}
   }, [products]);
 
   // 이미지 미리보기 모달 상태
@@ -608,13 +646,18 @@ export default function App() {
   useEffect(() => {
     if (firestoreOrdersLoaded.current) return;
     firestoreOrdersLoaded.current = true;
+    const currentOrders = savedOrders;
     getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-      if (snap.exists()) {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
         const data = snap.data().list;
-        if (Array.isArray(data) && data.length > 0) {
-          setSavedOrders(data);
-          localStorage.setItem('label_saved_orders', JSON.stringify(data));
-        }
+        setSavedOrders(data);
+        localStorage.setItem('label_saved_orders', JSON.stringify(data));
+      } else if (currentOrders.length > 0) {
+        // Firestore 비어있음 → 로컬 데이터 업로드
+        try {
+          const clean = JSON.parse(JSON.stringify(currentOrders));
+          setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
+        } catch(e) {}
       }
     }).catch(() => {}).finally(() => {
       ordersCanSave.current = true;
@@ -642,13 +685,18 @@ export default function App() {
   useEffect(() => {
     if (firestoreLogsLoaded.current) return;
     firestoreLogsLoaded.current = true;
+    const currentLogs = stockLogs;
     getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
-      if (snap.exists()) {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
         const data = snap.data().list;
-        if (Array.isArray(data) && data.length > 0) {
-          setStockLogs(data);
-          localStorage.setItem('label_stock_logs', JSON.stringify(data));
-        }
+        setStockLogs(data);
+        localStorage.setItem('label_stock_logs', JSON.stringify(data));
+      } else if (currentLogs.length > 0) {
+        // Firestore 비어있음 → 로컬 데이터 업로드
+        try {
+          const clean = JSON.parse(JSON.stringify(currentLogs));
+          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
+        } catch(e) {}
       }
     }).catch(() => {}).finally(() => {
       logsCanSave.current = true;

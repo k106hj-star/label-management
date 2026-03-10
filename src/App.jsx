@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History } from 'lucide-react';
 import { db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -291,8 +291,9 @@ export default function App() {
     return initialProducts;
   });
 
-  // Firestore에서 products 로드 (앱 시작 시 1회)
+  // Firestore 로드 완료 후에만 저장 허용 (race condition 방지)
   const firestoreLoaded = useRef(false);
+  const productsCanSave = useRef(false);
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
@@ -304,7 +305,9 @@ export default function App() {
           localStorage.setItem('label_products', JSON.stringify(data));
         }
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      productsCanSave.current = true;
+    });
   }, []);
 
   useEffect(() => {
@@ -312,8 +315,9 @@ export default function App() {
     localStorage.setItem('label_data_version', String(DATA_VERSION));
   }, [labels]);
 
-  // localStorage + Firestore 동시 저장
+  // Firestore 로드 완료 후에만 저장
   useEffect(() => {
+    if (!productsCanSave.current) return;
     localStorage.setItem('label_products', JSON.stringify(products));
     setDoc(doc(db, 'settings', 'products'), { list: products }).catch(() => {});
   }, [products]);
@@ -545,11 +549,61 @@ export default function App() {
   const [viewOrderEdits, setViewOrderEdits] = useState({});
   const [openOrderMenuId, setOpenOrderMenuId] = useState(null);
 
-  useEffect(() => {
-    localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders));
-    setDoc(doc(db, 'settings', 'savedOrders'), { list: savedOrders }).catch(() => {});
-  }, [savedOrders]);
+  const applyOrderToStock = (order) => {
+    if (order.applied) {
+      alert('이미 발주 확정된 내역입니다.');
+      return;
+    }
+    const orderItems = (order.details || []).filter(d => d.shortage > 0);
+    if (orderItems.length === 0) {
+      alert('발주 수량이 없습니다.');
+      return;
+    }
+    const confirmMsg = `발주 확정 시 재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => `• ${d.labelName || d.name} (${d.size}): ${d.shortage.toLocaleString()}개`).join('\n')}\n\n진행하시겠습니까?`;
+    if (!window.confirm(confirmMsg)) return;
+    const logItems = orderItems.map(d => {
+      const label = labels.find(l => l.id === d.id);
+      const before = label ? label.stock : 0;
+      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: Math.max(0, before - d.shortage) };
+    });
+    setLabels(prev => prev.map(label => {
+      const matched = orderItems.find(d => d.id === label.id);
+      if (matched) {
+        return { ...label, stock: Math.max(0, label.stock - matched.shortage) };
+      }
+      return label;
+    }));
+    setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt: new Date().toLocaleString('ko-KR') } : o));
+    if (viewOrder?.id === order.id) {
+      setViewOrder(prev => ({ ...prev, applied: true, appliedAt: new Date().toLocaleString('ko-KR') }));
+    }
+    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems }, ...prev]);
+    alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
+  };
 
+  const cancelOrderFromStock = (order) => {
+    if (!order.applied) return;
+    const orderItems = (order.details || []).filter(d => d.shortage > 0);
+    if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 재고 수량이 원복됩니다.`)) return;
+    const logItems = orderItems.map(d => {
+      const label = labels.find(l => l.id === d.id);
+      const before = label ? label.stock : 0;
+      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: +d.shortage, after: before + d.shortage };
+    });
+    setLabels(prev => prev.map(label => {
+      const matched = orderItems.find(d => d.id === label.id);
+      if (matched) return { ...label, stock: label.stock + matched.shortage };
+      return label;
+    }));
+    setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o));
+    if (viewOrder?.id === order.id) {
+      setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
+    }
+    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems }, ...prev]);
+    alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
+  };
+
+  const ordersCanSave = useRef(false);
   const firestoreOrdersLoaded = useRef(false);
   useEffect(() => {
     if (firestoreOrdersLoaded.current) return;
@@ -559,10 +613,55 @@ export default function App() {
         const data = snap.data().list;
         if (Array.isArray(data) && data.length > 0) {
           setSavedOrders(data);
+          localStorage.setItem('label_saved_orders', JSON.stringify(data));
         }
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      ordersCanSave.current = true;
+    });
   }, []);
+
+  useEffect(() => {
+    if (!ordersCanSave.current) return;
+    try {
+      localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders));
+    } catch(e) {}
+    try {
+      const cleanData = JSON.parse(JSON.stringify(savedOrders));
+      setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch(() => {});
+    } catch(e) {}
+  }, [savedOrders]);
+
+  // --- 재고 변동 로그 ---
+  const [stockLogs, setStockLogs] = useState(() => {
+    const saved = localStorage.getItem('label_stock_logs');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const logsCanSave = useRef(false);
+  const firestoreLogsLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreLogsLoaded.current) return;
+    firestoreLogsLoaded.current = true;
+    getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data().list;
+        if (Array.isArray(data) && data.length > 0) {
+          setStockLogs(data);
+          localStorage.setItem('label_stock_logs', JSON.stringify(data));
+        }
+      }
+    }).catch(() => {}).finally(() => {
+      logsCanSave.current = true;
+    });
+  }, []);
+  useEffect(() => {
+    if (!logsCanSave.current) return;
+    try { localStorage.setItem('label_stock_logs', JSON.stringify(stockLogs)); } catch(e) {}
+    try {
+      const cleanData = JSON.parse(JSON.stringify(stockLogs));
+      setDoc(doc(db, 'settings', 'stockLogs'), { list: cleanData }).catch(() => {});
+    } catch(e) {}
+  }, [stockLogs]);
 
   // --- [3] 발주 계산기 함수 ---
   const [calcTarget, setCalcTarget] = useState('');
@@ -576,6 +675,8 @@ export default function App() {
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
   const [calcNote, setCalcNote] = useState('');
+  const [calcMfgDate, setCalcMfgDate] = useState('');
+  const [calcRnNumber, setCalcRnNumber] = useState('');
 
   const calcColorList = calcColorText.split(',').map(s => s.trim()).filter(Boolean);
   const calcSizeList = calcSizeText.split(',').map(s => s.trim()).filter(Boolean);
@@ -610,7 +711,7 @@ export default function App() {
       const shortage = Math.max(0, totalNeed - label.stock);
       const cost = shortage * label.price;
       totalCost += cost;
-      return { ...label, needQty: totalNeed, shortage, cost };
+      return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost };
     }).filter(Boolean);
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
@@ -639,6 +740,12 @@ export default function App() {
               <ClipboardList size={18} /> 저장리스트
               {savedOrders.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{savedOrders.length}</span>
+              )}
+            </button>
+            <button onClick={() => setActiveTab('logs')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'logs' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <History size={18} /> 재고 로그
+              {stockLogs.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-slate-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{stockLogs.length > 99 ? '99+' : stockLogs.length}</span>
               )}
             </button>
           </div>
@@ -1006,15 +1113,8 @@ export default function App() {
                                       <label className="block text-xs text-slate-500 mb-0.5">소재</label>
                                       <input type="text" placeholder="소재 입력" value={item.careInfo?.material || ''} onChange={e => updateBomItemInfo(selectedProduct.id, item.labelId, 'material', e.target.value)} className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white" />
                                     </div>
-                                    <div>
-                                      <label className="block text-xs text-slate-500 mb-0.5">제조년월</label>
-                                      <input type="text" placeholder="예: 2024.06" value={item.careInfo?.mfgDate || ''} onChange={e => updateBomItemInfo(selectedProduct.id, item.labelId, 'mfgDate', e.target.value)} className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white" />
-                                    </div>
-                                    <div>
-                                      <label className="block text-xs text-slate-500 mb-0.5">RN넘버</label>
-                                      <input type="text" placeholder="RN넘버 입력" value={item.careInfo?.rnNumber || ''} onChange={e => updateBomItemInfo(selectedProduct.id, item.labelId, 'rnNumber', e.target.value)} className="w-full p-1.5 border border-slate-300 rounded text-xs bg-white" />
-                                    </div>
                                   </div>
+                                  <p className="text-xs text-amber-600 mt-1.5">※ 제조년월 · RN넘버는 발주 계산기에서 발주 시마다 입력합니다.</p>
                                 </td>
                               </tr>
                             )}
@@ -1075,7 +1175,7 @@ export default function App() {
                           : products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).map(p => (
                             <li
                               key={p.id}
-                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); }}
+                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); setCalcMfgDate(''); setCalcRnNumber(''); }}
                               className={`px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 ${String(p.id) === calcTarget ? 'bg-emerald-100 font-medium' : ''}`}
                             >
                               [{p.brand}] {p.name}
@@ -1099,6 +1199,36 @@ export default function App() {
                 <label className="block text-sm font-bold text-emerald-900 mb-2">특이사항</label>
                 <textarea value={calcNote} onChange={e => setCalcNote(e.target.value)} placeholder="특이사항 입력 (선택)" rows="2" className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm resize-none" />
               </div>
+              {calcTarget && (() => {
+                const _prod = products.find(p => p.id === parseInt(calcTarget));
+                const _careBomItem = _prod?.bom.find(b => labels.find(l => l.id === b.labelId)?.name.includes('케어라벨'));
+                if (!_careBomItem) return null;
+                return (
+                  <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-bold text-amber-800">케어라벨 정보</span>
+                      <span className="text-xs text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">발주마다 입력</span>
+                    </div>
+                    {(_careBomItem.careInfo?.code || _careBomItem.careInfo?.material) && (
+                      <p className="text-xs text-slate-500 mb-3 bg-white px-3 py-1.5 rounded border border-amber-100">
+                        품번: <span className="font-medium text-slate-700">{_careBomItem.careInfo?.code || '-'}</span>
+                        &nbsp;&nbsp;|&nbsp;&nbsp;
+                        소재: <span className="font-medium text-slate-700">{_careBomItem.careInfo?.material || '-'}</span>
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1 font-medium">제조년월</label>
+                        <input type="text" value={calcMfgDate} onChange={e => setCalcMfgDate(e.target.value)} placeholder="예: 2025.03" className="w-full p-2 border border-amber-200 rounded bg-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-600 mb-1 font-medium">RN넘버</label>
+                        <input type="text" value={calcRnNumber} onChange={e => setCalcRnNumber(e.target.value)} placeholder="RN넘버 입력" className="w-full p-2 border border-amber-200 rounded bg-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
               <div>
                 <label className="block text-sm font-bold text-emerald-900 mb-2">색상 / 사이즈별 생산 수량</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -1248,8 +1378,10 @@ export default function App() {
                         factory: calcFactory,
                         orderer: calcOrderer,
                         note: calcNote,
+                        mfgDate: calcMfgDate,
+                        rnNumber: calcRnNumber,
                         totalCost: calcResult.totalCost,
-                        totalQty: calcResult.details.reduce((s, d) => s + d.need, 0),
+                        totalQty: calcResult.details.reduce((s, d) => s + d.needQty, 0),
                         details: calcResult.details,
                       };
                       setSavedOrders(prev => [order, ...prev]);
@@ -1298,13 +1430,14 @@ export default function App() {
                     <th className="p-3 font-semibold text-slate-600 text-center">발주 라벨 수</th>
                     <th className="p-3 font-semibold text-slate-600 text-right">예상 비용</th>
                     <th className="p-3 font-semibold text-slate-600 text-center">상세</th>
+                    <th className="p-3 font-semibold text-slate-600 text-center">발주</th>
                     <th className="p-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {savedOrders.map((order, idx) => (
                     <React.Fragment key={order.id}>
-                      <tr className="hover:bg-slate-50">
+                      <tr className={`hover:bg-slate-50 ${order.applied ? 'bg-green-50/40' : ''}`}>
                         <td className="p-3 text-slate-400 text-xs whitespace-nowrap">{order.date}</td>
                         <td className="p-3 font-medium text-slate-800">{order.productName || '(미선택)'}</td>
                         <td className="p-3 text-slate-600">{order.factory || '-'}</td>
@@ -1314,6 +1447,15 @@ export default function App() {
                         <td className="p-3 text-center">
                           <button onClick={() => setViewOrder(order)} className="text-xs text-indigo-500 hover:text-indigo-700 underline">▼ 보기</button>
                         </td>
+                        <td className="p-3 text-center">
+                          {order.applied
+                            ? <div className="flex flex-col items-center gap-1">
+                                <span className="text-xs text-green-600 font-medium bg-green-100 px-2 py-1 rounded-full">✓ 완료</span>
+                                <button onClick={() => cancelOrderFromStock(order)} className="text-xs text-red-400 hover:text-red-600 hover:underline transition-colors">↩ 취소</button>
+                              </div>
+                            : <button onClick={() => applyOrderToStock(order)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium px-3 py-1 rounded-lg transition-colors">발주 확정</button>
+                          }
+                        </td>
                         <td className="p-3 text-center relative">
                           <button onClick={() => setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id)} className="text-slate-400 hover:text-slate-600 p-1">
                             <MoreVertical size={16} />
@@ -1322,7 +1464,7 @@ export default function App() {
                             <>
                               <div className="fixed inset-0 z-20" onClick={() => setOpenOrderMenuId(null)} />
                               <div className="absolute right-0 top-10 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28">
-                                <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', mfgDate: order.mfgDate || '', rnNumber: order.rnNumber || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                   <Pencil size={14} /> 수정
                                 </button>
                                 <button onClick={() => { setOpenOrderMenuId(null); setSavedOrders(prev => prev.filter((_, i) => i !== idx)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
@@ -1351,7 +1493,7 @@ export default function App() {
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="text-lg font-bold text-slate-800">📋 예상 발주 리스트</h3>
                   {!viewOrderEditMode && (
-                    <button onClick={() => { setViewOrderEditMode(true); setViewOrderEdits({ orderer: viewOrder.orderer || '', factory: viewOrder.factory || '', note: viewOrder.note || '', details: (viewOrder.details || []).map(d => ({ ...d })), _idx: savedOrders.findIndex(o => o.id === viewOrder.id) }); }} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 border border-slate-200 rounded px-2 py-0.5 hover:border-indigo-300">
+                    <button onClick={() => { setViewOrderEditMode(true); setViewOrderEdits({ orderer: viewOrder.orderer || '', factory: viewOrder.factory || '', note: viewOrder.note || '', mfgDate: viewOrder.mfgDate || '', rnNumber: viewOrder.rnNumber || '', details: (viewOrder.details || []).map(d => ({ ...d })), _idx: savedOrders.findIndex(o => o.id === viewOrder.id) }); }} className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-500 border border-slate-200 rounded px-2 py-0.5 hover:border-indigo-300">
                       <Pencil size={11} /> 수정
                     </button>
                   )}
@@ -1362,10 +1504,12 @@ export default function App() {
                     <label className="flex items-center gap-1 text-xs text-slate-500">발주자 <input value={viewOrderEdits.orderer} onChange={e => setViewOrderEdits(p => ({ ...p, orderer: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
                     <label className="flex items-center gap-1 text-xs text-slate-500">공장 <input value={viewOrderEdits.factory} onChange={e => setViewOrderEdits(p => ({ ...p, factory: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
                     <label className="flex items-center gap-1 text-xs text-slate-500">특이사항 <input value={viewOrderEdits.note} onChange={e => setViewOrderEdits(p => ({ ...p, note: e.target.value }))} className="border border-slate-300 rounded px-2 py-0.5 text-xs w-36 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
+                    <label className="flex items-center gap-1 text-xs text-slate-500">제조년월 <input value={viewOrderEdits.mfgDate || ''} onChange={e => setViewOrderEdits(p => ({ ...p, mfgDate: e.target.value }))} placeholder="예: 2025.03" className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
+                    <label className="flex items-center gap-1 text-xs text-slate-500">RN넘버 <input value={viewOrderEdits.rnNumber || ''} onChange={e => setViewOrderEdits(p => ({ ...p, rnNumber: e.target.value }))} placeholder="RN넘버" className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
                     <button onClick={() => {
                       const newDetails = (viewOrderEdits.details || viewOrder.details || []).map(({ _globalIdx, ...rest }) => rest);
                       const newTotalCost = newDetails.reduce((s, d) => s + (d.shortage > 0 ? (d.cost || 0) : 0), 0);
-                      const updated = { ...viewOrder, orderer: viewOrderEdits.orderer, factory: viewOrderEdits.factory, note: viewOrderEdits.note, details: newDetails, totalCost: newTotalCost };
+                      const updated = { ...viewOrder, orderer: viewOrderEdits.orderer, factory: viewOrderEdits.factory, note: viewOrderEdits.note, mfgDate: viewOrderEdits.mfgDate, rnNumber: viewOrderEdits.rnNumber, details: newDetails, totalCost: newTotalCost };
                       setSavedOrders(prev => prev.map((o, i) => i === viewOrderEdits._idx ? updated : o));
                       setViewOrder(updated);
                       setViewOrderEditMode(false);
@@ -1373,7 +1517,12 @@ export default function App() {
                     <button onClick={() => setViewOrderEditMode(false)} className="text-xs text-slate-400 hover:text-slate-600 px-2 py-1">취소</button>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400">{viewOrder.date} &nbsp;|&nbsp; 발주자: {viewOrder.orderer || '-'} &nbsp;|&nbsp; 공장: {viewOrder.factory || '-'}</p>
+                  <p className="text-xs text-slate-400">
+                    {viewOrder.date} &nbsp;|&nbsp; 발주자: {viewOrder.orderer || '-'} &nbsp;|&nbsp; 공장: {viewOrder.factory || '-'}
+                    {(viewOrder.mfgDate || viewOrder.rnNumber) && (
+                      <> &nbsp;|&nbsp; 제조년월: <span className="text-amber-600 font-medium">{viewOrder.mfgDate || '-'}</span> &nbsp;|&nbsp; RN넘버: <span className="text-amber-600 font-medium">{viewOrder.rnNumber || '-'}</span></>
+                    )}
+                  </p>
                 )}
               </div>
               <button onClick={() => { setViewOrder(null); setViewOrderEditMode(false); }} className="text-slate-400 hover:text-red-500 flex-shrink-0"><X size={20} /></button>
@@ -1426,6 +1575,22 @@ export default function App() {
                                 <td className="p-3">
                                   <div className="font-medium text-slate-800">{d.labelName || d.name}</div>
                                   <div className="text-xs text-slate-400">{d.code}</div>
+                                  {(d.labelName || d.name || '').includes('케어라벨') && (
+                                    <div className="mt-1 space-y-0.5">
+                                      {(d.careInfo?.code || d.careInfo?.material) && (
+                                        <div className="text-xs text-slate-500">
+                                          {d.careInfo?.code && <span className="mr-2">품번: <span className="font-medium text-slate-700">{d.careInfo.code}</span></span>}
+                                          {d.careInfo?.material && <span>소재: <span className="font-medium text-slate-700">{d.careInfo.material}</span></span>}
+                                        </div>
+                                      )}
+                                      {(viewOrder.mfgDate || viewOrder.rnNumber) && (
+                                        <div className="text-xs text-amber-600">
+                                          {viewOrder.mfgDate && <span className="mr-2">제조년월: <span className="font-medium">{viewOrder.mfgDate}</span></span>}
+                                          {viewOrder.rnNumber && <span>RN: <span className="font-medium">{viewOrder.rnNumber}</span></span>}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="p-3">
                                   {d.img
@@ -1467,8 +1632,100 @@ export default function App() {
                 <span className="text-slate-300 font-medium">총 예상 발주 비용 합계</span>
                 <span className="text-emerald-400 font-bold text-lg">{viewOrder.totalCost?.toLocaleString()} 원</span>
               </div>
+              <div className="flex justify-end pt-2">
+                {viewOrder.applied
+                  ? <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 text-green-600 font-medium text-sm bg-green-50 px-5 py-2.5 rounded-lg border border-green-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        발주 확정 완료 ({viewOrder.appliedAt})
+                      </div>
+                      <button onClick={() => cancelOrderFromStock(viewOrder)} className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 px-4 py-2.5 rounded-lg font-medium text-sm border border-red-200 transition-colors">
+                        ↩ 확정 취소
+                      </button>
+                    </div>
+                  : <button onClick={() => applyOrderToStock(viewOrder)} className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-lg font-bold shadow transition-colors">
+                      📦 발주 확정 (재고 차감)
+                    </button>
+                }
+              </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* [5] 재고 로그 탭 */}
+      {activeTab === 'logs' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <History className="text-slate-600" size={20} /> 재고 변동 로그
+              <span className="text-sm font-normal text-slate-400">총 {stockLogs.length}건</span>
+            </h2>
+            {stockLogs.length > 0 && (
+              <button
+                onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+                className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                전체 삭제
+              </button>
+            )}
+          </div>
+
+          {stockLogs.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <History size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">발주 확정 또는 취소 시 로그가 기록됩니다.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {stockLogs.map(log => (
+                <div key={log.id} className={`rounded-xl border p-4 ${log.type === 'deduct' ? 'border-orange-200 bg-orange-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
+                  {/* 로그 헤더 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${log.type === 'deduct' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {log.type === 'deduct' ? '📦 발주 확정 (재고 차감)' : '↩ 확정 취소 (재고 원복)'}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-700">{log.productName}</span>
+                      {log.factory && log.factory !== '-' && (
+                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
+                  </div>
+                  {/* 라벨별 변동 내역 */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-400 border-b border-slate-200">
+                          <th className="text-left pb-1.5 font-medium">라벨명</th>
+                          <th className="text-center pb-1.5 font-medium">사이즈</th>
+                          <th className="text-right pb-1.5 font-medium">변경 전</th>
+                          <th className="text-center pb-1.5 font-medium">변동량</th>
+                          <th className="text-right pb-1.5 font-medium">변경 후</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(log.items || []).map((item, i) => (
+                          <tr key={i} className="hover:bg-white/60">
+                            <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
+                            <td className="py-1.5 text-center text-slate-500">{item.size}</td>
+                            <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
+                            <td className="py-1.5 text-center font-bold">
+                              <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>
+                                {item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}
+                              </span>
+                            </td>
+                            <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

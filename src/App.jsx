@@ -1879,7 +1879,7 @@ export default function App() {
         const labelLogs = stockLogs.filter(log => log.items.some(item => item.labelId === labelLogModal.id));
         return (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setLabelLogModal(null)}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -1896,7 +1896,7 @@ export default function App() {
                   <p className="text-sm">발주 이력이 없습니다.</p>
                 </div>
               ) : (
-                <div className="overflow-auto max-h-96">
+                <div className="overflow-auto max-h-[720px]">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 text-xs">
@@ -1914,7 +1914,7 @@ export default function App() {
                           <tr key={log.id} className="hover:bg-slate-50">
                             <td className="p-2 text-slate-600 whitespace-nowrap">{log.date}</td>
                             <td className="p-2 text-slate-700">{log.factory || '-'}</td>
-                            <td className="p-2 text-slate-700 max-w-[140px] truncate">{log.productName || '-'}</td>
+                            <td className="p-2 text-slate-700">{log.productName || '-'}</td>
                             <td className="p-2 text-right font-medium">
                               <span className={log.type === 'deduct' ? 'text-orange-600' : 'text-blue-600'}>
                                 {log.type === 'deduct' ? '-' : '+'}{item?.change ?? 0}

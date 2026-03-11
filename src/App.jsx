@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History } from 'lucide-react';
-import { db } from './firebase';
+import { db, storage } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
 function compressImage(file, maxSize = 96) {
@@ -25,6 +26,21 @@ function compressImage(file, maxSize = 96) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// Firebase Storage 업로드 함수 (실패 시 base64 폴백)
+async function uploadToStorage(file) {
+  try {
+    const compressed = await compressImage(file);
+    const response = await fetch(compressed);
+    const blob = await response.blob();
+    const storageRef = ref(storage, `label-images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+    await uploadBytes(storageRef, blob);
+    return await getDownloadURL(storageRef);
+  } catch (e) {
+    // Storage 업로드 실패 시 base64로 폴백
+    return await compressImage(file);
+  }
 }
 
 // CSV 파서 함수 (따옴표 안의 쉼표 처리)
@@ -418,8 +434,8 @@ export default function App() {
   const handleEditImageUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const compressed = await compressImage(file);
-      setEditLabel(prev => ({ ...prev, img: compressed }));
+      const url = await uploadToStorage(file);
+      setEditLabel(prev => ({ ...prev, img: url }));
     }
   };
 
@@ -450,8 +466,8 @@ export default function App() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const compressed = await compressImage(file);
-      setNewLabel(prev => ({ ...prev, img: compressed }));
+      const url = await uploadToStorage(file);
+      setNewLabel(prev => ({ ...prev, img: url }));
     }
   };
 
@@ -919,8 +935,8 @@ export default function App() {
                             <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
                               const file = e.target.files[0];
                               if (file) {
-                                const compressed = await compressImage(file);
-                                setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: compressed } : item));
+                                const url = await uploadToStorage(file);
+                                setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: url } : item));
                               }
                             }} />
                             {l.img

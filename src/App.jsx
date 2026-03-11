@@ -316,13 +316,19 @@ export default function App() {
     return result;
   });
 
+  // localStorage 보유 여부 — 마운트 시 동기적으로 캡처 (effects보다 먼저 실행)
+  const labelsWasInLS = useRef(!!localStorage.getItem('label_inventory'));
+  const productsWasInLS = useRef(!!localStorage.getItem('label_products'));
+  const ordersWasInLS = useRef(!!localStorage.getItem('label_saved_orders'));
+  const logsWasInLS = useRef(!!localStorage.getItem('label_stock_logs'));
+
   // --- Labels Firestore 동기화 (로컬 우선) ---
   const labelsCanSave = useRef(false);
   const firestoreLabelsLoaded = useRef(false);
   useEffect(() => {
     if (firestoreLabelsLoaded.current) return;
     firestoreLabelsLoaded.current = true;
-    const hasLocal = !!localStorage.getItem('label_inventory');
+    const hasLocal = labelsWasInLS.current;
     const currentLabels = labels;
     if (hasLocal) {
       // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
@@ -360,7 +366,7 @@ export default function App() {
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
-    const hasLocal = !!localStorage.getItem('label_products');
+    const hasLocal = productsWasInLS.current;
     const currentProducts = products;
     if (hasLocal) {
       // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
@@ -381,10 +387,10 @@ export default function App() {
     }
   }, []);
 
-  // Firestore 로드 완료 후에만 저장
+  // localStorage는 항상 저장, Firestore는 로드 완료 후만
   useEffect(() => {
-    if (!productsCanSave.current) return;
     try { localStorage.setItem('label_products', JSON.stringify(products)); } catch(e) {}
+    if (!productsCanSave.current) return;
     try {
       const clean = JSON.parse(JSON.stringify(products));
       setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
@@ -677,7 +683,7 @@ export default function App() {
   useEffect(() => {
     if (firestoreOrdersLoaded.current) return;
     firestoreOrdersLoaded.current = true;
-    const hasLocal = !!localStorage.getItem('label_saved_orders');
+    const hasLocal = ordersWasInLS.current;
     const currentOrders = savedOrders;
     if (hasLocal) {
       // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
@@ -699,10 +705,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    try { localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders)); } catch(e) {}
     if (!ordersCanSave.current) return;
-    try {
-      localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders));
-    } catch(e) {}
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
       setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch(() => {});
@@ -719,26 +723,31 @@ export default function App() {
   useEffect(() => {
     if (firestoreLogsLoaded.current) return;
     firestoreLogsLoaded.current = true;
+    const hasLocal = logsWasInLS.current;
     const currentLogs = stockLogs;
-    getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
-      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const data = snap.data().list;
-        setStockLogs(data);
-        localStorage.setItem('label_stock_logs', JSON.stringify(data));
-      } else if (currentLogs.length > 0) {
-        // Firestore 비어있음 → 로컬 데이터 업로드
-        try {
-          const clean = JSON.parse(JSON.stringify(currentLogs));
-          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
-        } catch(e) {}
-      }
-    }).catch(() => {}).finally(() => {
+    if (hasLocal) {
+      // 로컬 데이터 있음 → Firestore에 업로드만, 로드 안 함
+      try {
+        const clean = JSON.parse(JSON.stringify(currentLogs));
+        setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
+      } catch(e) {}
       logsCanSave.current = true;
-    });
+    } else {
+      // 로컬 없음 → Firestore에서 복구
+      getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
+        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+          const data = snap.data().list;
+          setStockLogs(data);
+          localStorage.setItem('label_stock_logs', JSON.stringify(data));
+        }
+      }).catch(() => {}).finally(() => {
+        logsCanSave.current = true;
+      });
+    }
   }, []);
   useEffect(() => {
-    if (!logsCanSave.current) return;
     try { localStorage.setItem('label_stock_logs', JSON.stringify(stockLogs)); } catch(e) {}
+    if (!logsCanSave.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(stockLogs));
       setDoc(doc(db, 'settings', 'stockLogs'), { list: cleanData }).catch(() => {});

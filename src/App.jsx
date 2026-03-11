@@ -419,6 +419,7 @@ export default function App() {
   // 드롭다운 메뉴 & 수정 모달 상태
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editLabel, setEditLabel] = useState(null);
+  const [labelLogModal, setLabelLogModal] = useState(null); // 라벨 로그 모달 (label 객체)
 
   const startEdit = (label) => {
     setEditLabel({ ...label });
@@ -970,9 +971,14 @@ export default function App() {
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>
                       <td className="p-3 text-center relative">
-                        <button onClick={() => setOpenMenuId(openMenuId === l.id ? null : l.id)} className="text-slate-400 hover:text-slate-600 p-1">
-                          <MoreVertical size={16} />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => setLabelLogModal(l)} className="text-slate-400 hover:text-blue-500 p-1" title="발주 로그 보기">
+                            <History size={15} />
+                          </button>
+                          <button onClick={() => setOpenMenuId(openMenuId === l.id ? null : l.id)} className="text-slate-400 hover:text-slate-600 p-1">
+                            <MoreVertical size={16} />
+                          </button>
+                        </div>
                         {openMenuId === l.id && (
                           <>
                             <div className="fixed inset-0 z-20" onClick={() => setOpenMenuId(null)} />
@@ -1867,6 +1873,69 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 라벨 발주 로그 모달 */}
+      {labelLogModal && (() => {
+        const labelLogs = stockLogs.filter(log => log.items.some(item => item.labelId === labelLogModal.id));
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setLabelLogModal(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <History size={16} className="text-blue-500" />
+                    발주 로그
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{labelLogModal.name} {labelLogModal.size && `(${labelLogModal.size})`}</p>
+                </div>
+                <button onClick={() => setLabelLogModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+              {labelLogs.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <History size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">발주 이력이 없습니다.</p>
+                </div>
+              ) : (
+                <div className="overflow-auto max-h-96">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 text-xs">
+                        <th className="p-2 text-left font-medium">발주날짜</th>
+                        <th className="p-2 text-left font-medium">공장명</th>
+                        <th className="p-2 text-left font-medium">상품명</th>
+                        <th className="p-2 text-right font-medium">수량</th>
+                        <th className="p-2 text-center font-medium">구분</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {labelLogs.map(log => {
+                        const item = log.items.find(i => i.labelId === labelLogModal.id);
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50">
+                            <td className="p-2 text-slate-600 whitespace-nowrap">{log.date}</td>
+                            <td className="p-2 text-slate-700">{log.factory || '-'}</td>
+                            <td className="p-2 text-slate-700 max-w-[140px] truncate">{log.productName || '-'}</td>
+                            <td className="p-2 text-right font-medium">
+                              <span className={log.type === 'deduct' ? 'text-orange-600' : 'text-blue-600'}>
+                                {log.type === 'deduct' ? '-' : '+'}{item?.change ?? 0}
+                              </span>
+                            </td>
+                            <td className="p-2 text-center">
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full ${log.type === 'deduct' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'}`}>
+                                {log.type === 'deduct' ? '차감' : '복원'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 라벨 수정 모달 */}
       {editLabel && (

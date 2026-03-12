@@ -28,18 +28,46 @@ function compressImage(file, maxSize = 96) {
   });
 }
 
-// Firebase Storage 업로드 함수 (실패 시 base64 폴백)
-async function uploadToStorage(file) {
+// GitHub 이미지 업로드 (백업 저장소)
+async function uploadToGitHub(compressedBase64, fileName) {
+  const token = import.meta.env.VITE_GITHUB_TOKEN;
+  if (!token) return null;
   try {
-    const compressed = await compressImage(file);
+    const owner = import.meta.env.VITE_GITHUB_OWNER || 'k106hj-star';
+    const repo = import.meta.env.VITE_GITHUB_REPO || 'label-management';
+    const base64Data = compressedBase64.split(',')[1];
+    const resp = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/public/label-images/${fileName}`,
+      {
+        method: 'PUT',
+        headers: { 'Authorization': `token ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `img: ${fileName}`, content: base64Data }),
+      }
+    );
+    if (!resp.ok) return null;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/main/public/label-images/${fileName}`;
+  } catch { return null; }
+}
+
+// Firebase Storage 업로드 (GitHub 백업 + base64 폴백)
+async function uploadToStorage(file) {
+  const compressed = await compressImage(file, 200);
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  try {
     const response = await fetch(compressed);
     const blob = await response.blob();
-    const storageRef = ref(storage, `label-images/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+    const storageRef = ref(storage, `label-images/${fileName}`);
     await uploadBytes(storageRef, blob);
-    return await getDownloadURL(storageRef);
+    const firebaseUrl = await getDownloadURL(storageRef);
+    // GitHub 백업은 백그라운드 실행 (대기 안 함)
+    uploadToGitHub(compressed, fileName).catch(() => {});
+    return firebaseUrl;
   } catch (e) {
-    // Storage 업로드 실패 시 base64로 폴백
-    return await compressImage(file);
+    // Firebase 실패 시 GitHub 시도
+    const githubUrl = await uploadToGitHub(compressed, fileName);
+    if (githubUrl) return githubUrl;
+    // 최후 폴백: base64
+    return compressed;
   }
 }
 
@@ -947,6 +975,15 @@ export default function App() {
                           {l.img && (
                             <button onClick={() => setPreviewImg(l.img)} className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md">
                               <ZoomIn size={14} />
+                            </button>
+                          )}
+                          {l.img && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: '' } : item)); }}
+                              className="absolute -bottom-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                              title="이미지 삭제"
+                            >
+                              <X size={12} />
                             </button>
                           )}
                         </div>
@@ -1987,7 +2024,18 @@ export default function App() {
               <div className="col-span-2">
                 <label className="block text-xs text-slate-500 mb-1">이미지</label>
                 <div className="flex items-center gap-3">
-                  {editLabel.img && <img src={editLabel.img} alt="preview" className="w-12 h-12 rounded object-cover border border-slate-200" />}
+                  {editLabel.img && (
+                    <div className="relative group/editimg">
+                      <img src={editLabel.img} alt="preview" className="w-12 h-12 rounded object-cover border border-slate-200" />
+                      <button
+                        onClick={() => setEditLabel(prev => ({ ...prev, img: '' }))}
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/editimg:opacity-100 transition-opacity shadow-md"
+                        title="이미지 삭제"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )}
                   <input type="file" accept="image/*" onChange={handleEditImageUpload} className="text-sm" />
                 </div>
               </div>

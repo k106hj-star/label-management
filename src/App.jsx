@@ -929,7 +929,7 @@ export default function App() {
         {/* 헤더 */}
         <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">라벨 재고 및 지능형 발주 시스템</h1>
+            <h1 className="text-2xl font-bold text-slate-800">라벨 발주 시스템</h1>
             <p className="text-sm text-slate-500 mt-1">전체 라벨 {labels.length}종 등록 완료</p>
           </div>
           <div className="flex gap-2">

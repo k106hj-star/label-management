@@ -867,7 +867,7 @@ export default function App() {
               <Package size={18} /> 재고리스트
             </button>
             <button onClick={() => setActiveTab('bom')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'bom' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <Layers size={18} /> 상품 BOM 세팅
+              <Layers size={18} /> 상품 세팅
             </button>
             <button onClick={() => setActiveTab('calc')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'calc' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               <Calculator size={18} /> 발주 계산기

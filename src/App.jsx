@@ -864,7 +864,7 @@ export default function App() {
           </div>
           <div className="flex gap-2">
             <button onClick={() => setActiveTab('inventory')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <Package size={18} /> 라벨 마스터
+              <Package size={18} /> 재고리스트
             </button>
             <button onClick={() => setActiveTab('bom')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'bom' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               <Layers size={18} /> 상품 BOM 세팅

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus } from 'lucide-react';
 import { db, storage } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
 function compressImage(file, maxSize = 96) {
@@ -799,6 +799,110 @@ export default function App() {
     } catch(e) {}
   }, [stockLogs]);
 
+  // --- 자료실 ---
+  const [documents, setDocuments] = useState(() => {
+    const saved = localStorage.getItem('label_documents');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const docsCanSave = useRef(false);
+  const firestoreDocsLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreDocsLoaded.current) return;
+    firestoreDocsLoaded.current = true;
+    const hasLocal = !!localStorage.getItem('label_documents');
+    if (hasLocal) {
+      try {
+        const clean = JSON.parse(JSON.stringify(documents));
+        setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch(() => {});
+      } catch(e) {}
+      docsCanSave.current = true;
+    } else {
+      getDoc(doc(db, 'settings', 'documents')).then(snap => {
+        if (snap.exists() && Array.isArray(snap.data().list)) {
+          const data = snap.data().list;
+          setDocuments(data);
+          localStorage.setItem('label_documents', JSON.stringify(data));
+        }
+      }).catch(() => {}).finally(() => { docsCanSave.current = true; });
+    }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('label_documents', JSON.stringify(documents)); } catch(e) {}
+    if (!docsCanSave.current) return;
+    try {
+      setDoc(doc(db, 'settings', 'documents'), { list: JSON.parse(JSON.stringify(documents)) }).catch(() => {});
+    } catch(e) {}
+  }, [documents]);
+
+  const [docCategory, setDocCategory] = useState('전체');
+  const [docSearch, setDocSearch] = useState('');
+  const [docUploading, setDocUploading] = useState(false);
+  const [docNewCategory, setDocNewCategory] = useState('일반');
+
+  const docCategories = ['전체', ...Array.from(new Set(documents.map(d => d.category).filter(Boolean)))];
+
+  const getFileIcon = (ext) => {
+    const e = (ext || '').toLowerCase();
+    if (['pdf'].includes(e)) return <FileText size={20} className="text-red-500" />;
+    if (['xls','xlsx','csv'].includes(e)) return <FileText size={20} className="text-green-600" />;
+    if (['doc','docx'].includes(e)) return <FileText size={20} className="text-blue-600" />;
+    if (['jpg','jpeg','png','gif','webp'].includes(e)) return <ImageIcon size={20} className="text-purple-500" />;
+    return <File size={20} className="text-slate-400" />;
+  };
+
+  const formatBytes = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)}KB`;
+    return `${(bytes/1024/1024).toFixed(1)}MB`;
+  };
+
+  const handleDocUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setDocUploading(true);
+    try {
+      for (const file of files) {
+        const ext = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const storageRef = ref(storage, `documents/${fileName}`);
+        await uploadBytes(storageRef, file);
+        const url = await getDownloadURL(storageRef);
+        const newDoc = {
+          id: Date.now() + Math.random(),
+          name: file.name,
+          storageName: fileName,
+          url,
+          size: file.size,
+          ext,
+          category: docNewCategory || '일반',
+          uploadedAt: new Date().toISOString(),
+          memo: '',
+        };
+        setDocuments(prev => [newDoc, ...prev]);
+      }
+    } catch(err) {
+      alert('업로드 중 오류가 발생했습니다.');
+    }
+    setDocUploading(false);
+    e.target.value = '';
+  };
+
+  const deleteDocument = async (docItem) => {
+    if (!window.confirm(`"${docItem.name}" 을(를) 삭제하시겠습니까?`)) return;
+    try {
+      const storageRef = ref(storage, `documents/${docItem.storageName}`);
+      await deleteObject(storageRef).catch(() => {});
+    } catch(e) {}
+    setDocuments(prev => prev.filter(d => d.id !== docItem.id));
+  };
+
+  const filteredDocs = documents.filter(d => {
+    const catMatch = docCategory === '전체' || d.category === docCategory;
+    const searchMatch = !docSearch.trim() || d.name.toLowerCase().includes(docSearch.toLowerCase());
+    return catMatch && searchMatch;
+  });
+
   // --- [3] 발주 계산기 함수 ---
   const [calcTarget, setCalcTarget] = useState('');
   const [calcSearchText, setCalcSearchText] = useState('');
@@ -882,6 +986,12 @@ export default function App() {
               <History size={18} /> 재고 로그
               {stockLogs.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-slate-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{stockLogs.length > 99 ? '99+' : stockLogs.length}</span>
+              )}
+            </button>
+            <button onClick={() => setActiveTab('docs')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'docs' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              <FolderOpen size={18} /> 자료실
+              {documents.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{documents.length > 99 ? '99+' : documents.length}</span>
               )}
             </button>
           </div>
@@ -2045,6 +2155,85 @@ export default function App() {
               <button onClick={saveEdit} className="px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg font-medium">저장</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* [6] 자료실 탭 */}
+      {activeTab === 'docs' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <FolderOpen size={20} className="text-teal-600" /> 자료실
+              <span className="text-sm font-normal text-slate-400">({documents.length}개)</span>
+            </h2>
+            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+              <FilePlus size={16} />
+              {docUploading ? '업로드 중...' : '파일 추가'}
+              <input type="file" multiple className="hidden" onChange={handleDocUpload} disabled={docUploading} />
+            </label>
+          </div>
+
+          {/* 카테고리 + 검색 */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="flex gap-2 flex-wrap">
+              {docCategories.map(cat => (
+                <button key={cat} onClick={() => setDocCategory(cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${docCategory === cat ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text" placeholder="파일명 검색" value={docSearch} onChange={e => setDocSearch(e.target.value)}
+              className="ml-auto px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-teal-300"
+            />
+          </div>
+
+          {/* 업로드 시 카테고리 설정 */}
+          <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
+            <span className="text-xs font-medium text-slate-500">업로드 카테고리:</span>
+            <input
+              type="text" value={docNewCategory} onChange={e => setDocNewCategory(e.target.value)}
+              placeholder="카테고리명 입력"
+              className="px-2 py-1 border border-slate-200 rounded text-xs w-32 focus:outline-none focus:ring-2 focus:ring-teal-300"
+            />
+            <span className="text-xs text-slate-400">파일 추가 전에 카테고리를 설정하세요</span>
+          </div>
+
+          {/* 파일 목록 */}
+          {filteredDocs.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">{documents.length === 0 ? '파일을 추가해주세요.' : '검색 결과가 없습니다.'}</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filteredDocs.map(d => (
+                <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    {getFileIcon(d.ext)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {d.category && <span className="bg-teal-50 text-teal-700 rounded px-1.5 py-0.5 mr-2">{d.category}</span>}
+                      {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors" title="다운로드">
+                      <Download size={15} />
+                    </a>
+                    <button onClick={() => deleteDocument(d)}
+                      className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors" title="삭제">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

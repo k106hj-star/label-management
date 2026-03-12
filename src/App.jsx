@@ -366,32 +366,25 @@ export default function App() {
   const ordersWasInLS = useRef(!!localStorage.getItem('label_saved_orders'));
   const logsWasInLS = useRef(!!localStorage.getItem('label_stock_logs'));
 
-  // --- Labels Firestore 동기화 (로컬 우선) ---
+  // --- Labels Firestore 동기화 (항상 Firestore 최신 로드 → 멀티 기기 연동) ---
   const labelsCanSave = useRef(false);
   const firestoreLabelsLoaded = useRef(false);
   useEffect(() => {
     if (firestoreLabelsLoaded.current) return;
     firestoreLabelsLoaded.current = true;
-    const hasLocal = labelsWasInLS.current;
-    const currentLabels = labels;
-    if (hasLocal) {
-      // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
-      try {
-        const clean = JSON.parse(JSON.stringify(currentLabels));
-        setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
-      } catch(e) {}
-      labelsCanSave.current = true;
-    } else {
-      // 로컬 없음 → Firestore에서 복구
-      getDoc(doc(db, 'settings', 'labels')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-          const data = snap.data().list;
-          setLabels(data);
-          localStorage.setItem('label_inventory', JSON.stringify(data));
-          localStorage.setItem('label_data_version', String(DATA_VERSION));
-        }
-      }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
-    }
+    getDoc(doc(db, 'settings', 'labels')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+        const data = snap.data().list;
+        setLabels(data);
+        localStorage.setItem('label_inventory', JSON.stringify(data));
+        localStorage.setItem('label_data_version', String(DATA_VERSION));
+      } else if (labelsWasInLS.current) {
+        try {
+          const clean = JSON.parse(JSON.stringify(labels));
+          setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
   }, []);
 
   useEffect(() => {
@@ -404,31 +397,24 @@ export default function App() {
     } catch(e) {}
   }, [labels]);
 
-  // Products Firestore 동기화 (로컬 우선)
+  // Products Firestore 동기화 (항상 Firestore 최신 로드)
   const firestoreLoaded = useRef(false);
   const productsCanSave = useRef(false);
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
-    const hasLocal = productsWasInLS.current;
-    const currentProducts = products;
-    if (hasLocal) {
-      // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
-      try {
-        const clean = JSON.parse(JSON.stringify(currentProducts));
-        setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
-      } catch(e) {}
-      productsCanSave.current = true;
-    } else {
-      // 로컬 없음 → Firestore에서 복구
-      getDoc(doc(db, 'settings', 'products')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-          const data = snap.data().list;
-          setProducts(data);
-          localStorage.setItem('label_products', JSON.stringify(data));
-        }
-      }).catch(() => {}).finally(() => { productsCanSave.current = true; });
-    }
+    getDoc(doc(db, 'settings', 'products')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+        const data = snap.data().list;
+        setProducts(data);
+        localStorage.setItem('label_products', JSON.stringify(data));
+      } else if (productsWasInLS.current) {
+        try {
+          const clean = JSON.parse(JSON.stringify(products));
+          setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => { productsCanSave.current = true; });
   }, []);
 
   // localStorage는 항상 저장, Firestore는 로드 완료 후만
@@ -728,25 +714,18 @@ export default function App() {
   useEffect(() => {
     if (firestoreOrdersLoaded.current) return;
     firestoreOrdersLoaded.current = true;
-    const hasLocal = ordersWasInLS.current;
-    const currentOrders = savedOrders;
-    if (hasLocal) {
-      // 로컬 데이터 있음 → Firestore에 업로드만 하고 로드 안 함
-      try {
-        const clean = JSON.parse(JSON.stringify(currentOrders));
-        setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
-      } catch(e) {}
-      ordersCanSave.current = true;
-    } else {
-      // 로컬 없음 → Firestore에서 복구
-      getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-          const data = snap.data().list;
-          setSavedOrders(data);
-          localStorage.setItem('label_saved_orders', JSON.stringify(data));
-        }
-      }).catch(() => {}).finally(() => { ordersCanSave.current = true; });
-    }
+    getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+        const data = snap.data().list;
+        setSavedOrders(data);
+        localStorage.setItem('label_saved_orders', JSON.stringify(data));
+      } else if (ordersWasInLS.current) {
+        try {
+          const clean = JSON.parse(JSON.stringify(savedOrders));
+          setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => { ordersCanSave.current = true; });
   }, []);
 
   useEffect(() => {
@@ -768,27 +747,18 @@ export default function App() {
   useEffect(() => {
     if (firestoreLogsLoaded.current) return;
     firestoreLogsLoaded.current = true;
-    const hasLocal = logsWasInLS.current;
-    const currentLogs = stockLogs;
-    if (hasLocal) {
-      // 로컬 데이터 있음 → Firestore에 업로드만, 로드 안 함
-      try {
-        const clean = JSON.parse(JSON.stringify(currentLogs));
-        setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
-      } catch(e) {}
-      logsCanSave.current = true;
-    } else {
-      // 로컬 없음 → Firestore에서 복구
-      getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-          const data = snap.data().list;
-          setStockLogs(data);
-          localStorage.setItem('label_stock_logs', JSON.stringify(data));
-        }
-      }).catch(() => {}).finally(() => {
-        logsCanSave.current = true;
-      });
-    }
+    getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+        const data = snap.data().list;
+        setStockLogs(data);
+        localStorage.setItem('label_stock_logs', JSON.stringify(data));
+      } else if (logsWasInLS.current) {
+        try {
+          const clean = JSON.parse(JSON.stringify(stockLogs));
+          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => { logsCanSave.current = true; });
   }, []);
   useEffect(() => {
     try { localStorage.setItem('label_stock_logs', JSON.stringify(stockLogs)); } catch(e) {}
@@ -809,22 +779,18 @@ export default function App() {
   useEffect(() => {
     if (firestoreDocsLoaded.current) return;
     firestoreDocsLoaded.current = true;
-    const hasLocal = !!localStorage.getItem('label_documents');
-    if (hasLocal) {
-      try {
-        const clean = JSON.parse(JSON.stringify(documents));
-        setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch(() => {});
-      } catch(e) {}
-      docsCanSave.current = true;
-    } else {
-      getDoc(doc(db, 'settings', 'documents')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list)) {
-          const data = snap.data().list;
-          setDocuments(data);
-          localStorage.setItem('label_documents', JSON.stringify(data));
-        }
-      }).catch(() => {}).finally(() => { docsCanSave.current = true; });
-    }
+    getDoc(doc(db, 'settings', 'documents')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list)) {
+        const data = snap.data().list;
+        setDocuments(data);
+        localStorage.setItem('label_documents', JSON.stringify(data));
+      } else if (!!localStorage.getItem('label_documents')) {
+        try {
+          const clean = JSON.parse(JSON.stringify(documents));
+          setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch(() => {});
+        } catch(e) {}
+      }
+    }).catch(() => {}).finally(() => { docsCanSave.current = true; });
   }, []);
   useEffect(() => {
     try { localStorage.setItem('label_documents', JSON.stringify(documents)); } catch(e) {}

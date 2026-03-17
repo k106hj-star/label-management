@@ -317,6 +317,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('inventory');
   const [lowStockExpanded, setLowStockExpanded] = useState(true);
   const [navExpanded, setNavExpanded] = useState(true);
+  const [labelPage, setLabelPage] = useState(1);
+  const [labelPageSize, setLabelPageSize] = useState(30);
 
   const [labels, setLabels] = useState(() => {
     const savedVersion = localStorage.getItem('label_data_version');
@@ -462,7 +464,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const brandList = ['전체', 'WV', 'JM', 'EZ', 'FP', '공용'];
 
-  const executeSearch = () => setSearchQuery(searchInput);
+  const executeSearch = () => { setSearchQuery(searchInput); setLabelPage(1); };
 
   const filteredLabels = labels.filter(l => {
     const brandMatch = brandFilter === '전체' || l.brand === brandFilter;
@@ -476,6 +478,9 @@ export default function App() {
       l.size.toLowerCase().includes(q)
     );
   });
+
+  const labelTotalPages = Math.ceil(filteredLabels.length / labelPageSize);
+  const pagedLabels = filteredLabels.slice((labelPage - 1) * labelPageSize, labelPage * labelPageSize);
 
   // --- [1] 라벨 마스터 관련 함수 ---
   const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
@@ -1016,7 +1021,7 @@ export default function App() {
                 {/* 브랜드 필터 */}
                 <div className="flex gap-1">
                   {brandList.map(b => (
-                    <button key={b} onClick={() => setBrandFilter(b)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${brandFilter === b ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    <button key={b} onClick={() => { setBrandFilter(b); setLabelPage(1); }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${brandFilter === b ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                       {b}
                     </button>
                   ))}
@@ -1051,7 +1056,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredLabels.map(l => (
+                  {pagedLabels.map(l => (
                     <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-3">
                         <div className="relative group">
@@ -1129,6 +1134,41 @@ export default function App() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* 페이지네이션 */}
+            <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <span>페이지당</span>
+                {[30, 50, 100].map(size => (
+                  <button key={size} onClick={() => { setLabelPageSize(size); setLabelPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${labelPageSize === size ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                    {size}
+                  </button>
+                ))}
+                <span className="ml-2 text-slate-400">{filteredLabels.length}개 중 {(labelPage-1)*labelPageSize+1}–{Math.min(labelPage*labelPageSize, filteredLabels.length)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setLabelPage(1)} disabled={labelPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                <button onClick={() => setLabelPage(p => Math.max(1, p-1))} disabled={labelPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                {Array.from({length: labelTotalPages}, (_, i) => i+1)
+                  .filter(p => p === 1 || p === labelTotalPages || Math.abs(p - labelPage) <= 2)
+                  .reduce((acc, p, idx, arr) => {
+                    if (idx > 0 && p - arr[idx-1] > 1) acc.push('...');
+                    acc.push(p);
+                    return acc;
+                  }, [])
+                  .map((p, idx) => p === '...' ? (
+                    <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
+                  ) : (
+                    <button key={p} onClick={() => setLabelPage(p)}
+                      className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${labelPage === p ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                      {p}
+                    </button>
+                  ))}
+                <button onClick={() => setLabelPage(p => Math.min(labelTotalPages, p+1))} disabled={labelPage === labelTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                <button onClick={() => setLabelPage(labelTotalPages)} disabled={labelPage === labelTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
+              </div>
             </div>
 
             {/* 신규 라벨 추가 모달 */}

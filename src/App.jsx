@@ -478,6 +478,7 @@ export default function App() {
 
   // --- [1] 라벨 마스터 관련 함수 ---
   const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
+  const [showAddLabelModal, setShowAddLabelModal] = useState(false);
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
@@ -520,6 +521,7 @@ export default function App() {
     if (!newLabel.name || !newLabel.code) return alert('라벨명과 품번은 필수입니다.');
     setLabels([...labels, { ...newLabel, id: Date.now() }]);
     setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
+    setShowAddLabelModal(false);
   };
 
   const deleteLabel = (id) => {
@@ -1014,6 +1016,10 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+                {/* 신규 라벨 추가 버튼 */}
+                <button onClick={() => setShowAddLabelModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+                  <Plus size={16} /> 신규 라벨 추가
+                </button>
                 {/* CSV 대량 업로드 버튼 */}
                 <label className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer transition-colors">
                   <Upload size={16} /> CSV 대량 등록
@@ -1120,58 +1126,65 @@ export default function App() {
               </table>
             </div>
 
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mt-6">
-              <h3 className="text-sm font-bold text-slate-700 mb-3">신규 라벨 등록</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="col-span-2 md:col-span-4 flex gap-4">
-                  <div className="flex-1">
-                    <label className="block text-xs text-slate-500 mb-1">라벨 이미지 (선택)</label>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-sm p-2 border border-slate-300 rounded bg-white" />
+            {/* 신규 라벨 추가 모달 */}
+            {showAddLabelModal && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowAddLabelModal(false)}>
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl p-6" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-base font-bold text-slate-800 flex items-center gap-2"><Plus size={16} className="text-blue-600" /> 신규 라벨 등록</h3>
+                    <button onClick={() => setShowAddLabelModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="col-span-2 md:col-span-4">
+                      <label className="block text-xs text-slate-500 mb-1">라벨 이미지 (선택)</label>
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-sm p-2 border border-slate-300 rounded bg-white" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">브랜드</label>
+                      <select value={newLabel.brand} onChange={e => setNewLabel({ ...newLabel, brand: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
+                        <option value="WV">WV</option>
+                        <option value="JM">JM</option>
+                        <option value="EZ">EZ</option>
+                        <option value="FP">FP</option>
+                        <option value="공용">공용</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">종류</label>
+                      <input type="text" value={newLabel.type} onChange={e => setNewLabel({ ...newLabel, type: e.target.value })} placeholder="예: 행택, 폴리백" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">라벨명</label>
+                      <input type="text" value={newLabel.name} onChange={e => setNewLabel({ ...newLabel, name: e.target.value })} placeholder="예: WV 메인택" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">품번 (고유코드)</label>
+                      <input type="text" value={newLabel.code} onChange={e => setNewLabel({ ...newLabel, code: e.target.value })} placeholder="예: WVHT001" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">사이즈</label>
+                      <input type="text" value={newLabel.size} onChange={e => setNewLabel({ ...newLabel, size: e.target.value })} placeholder="예: one size, S, M" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">현재 재고(수량)</label>
+                      <input type="number" value={newLabel.stock} onChange={e => setNewLabel({ ...newLabel, stock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">단가(원)</label>
+                      <input type="number" value={newLabel.price} onChange={e => setNewLabel({ ...newLabel, price: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">공급처</label>
+                      <input type="text" value={newLabel.vendor} onChange={e => setNewLabel({ ...newLabel, vendor: e.target.value })} placeholder="예: 스마트, SB라벨" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-5">
+                    <button onClick={() => setShowAddLabelModal(false)} className="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 hover:bg-slate-200">취소</button>
+                    <button onClick={addLabel} className="px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"><Plus size={16} /> 추가</button>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">브랜드</label>
-                  <select value={newLabel.brand} onChange={e => setNewLabel({ ...newLabel, brand: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
-                    <option value="WV">WV</option>
-                    <option value="JM">JM</option>
-                    <option value="EZ">EZ</option>
-                    <option value="FP">FP</option>
-                    <option value="공용">공용</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">종류</label>
-                  <input type="text" value={newLabel.type} onChange={e => setNewLabel({ ...newLabel, type: e.target.value })} placeholder="예: 행택, 폴리백" className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">라벨명</label>
-                  <input type="text" value={newLabel.name} onChange={e => setNewLabel({ ...newLabel, name: e.target.value })} placeholder="예: WV 메인택" className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">품번 (고유코드)</label>
-                  <input type="text" value={newLabel.code} onChange={e => setNewLabel({ ...newLabel, code: e.target.value })} placeholder="예: WVHT001" className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">사이즈</label>
-                  <input type="text" value={newLabel.size} onChange={e => setNewLabel({ ...newLabel, size: e.target.value })} placeholder="예: one size, S, M" className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">현재 재고(수량)</label>
-                  <input type="number" value={newLabel.stock} onChange={e => setNewLabel({ ...newLabel, stock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">단가(원)</label>
-                  <input type="number" value={newLabel.price} onChange={e => setNewLabel({ ...newLabel, price: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">공급처</label>
-                  <input type="text" value={newLabel.vendor} onChange={e => setNewLabel({ ...newLabel, vendor: e.target.value })} placeholder="예: 스마트, SB라벨" className="w-full p-2 border border-slate-300 rounded text-sm" />
-                </div>
               </div>
-              <button onClick={addLabel} className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
-                <Plus size={16} /> 신규 라벨 추가
-              </button>
-            </div>
+            )}
           </div>
           </>
         )}

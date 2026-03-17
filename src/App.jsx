@@ -315,6 +315,7 @@ const DATA_VERSION = 2;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('inventory');
+  const [lowStockExpanded, setLowStockExpanded] = useState(true);
 
   const [labels, setLabels] = useState(() => {
     const savedVersion = localStorage.getItem('label_data_version');
@@ -927,12 +928,12 @@ export default function App() {
       <div className="max-w-6xl mx-auto space-y-6">
 
         {/* 헤더 */}
-        <div className="flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+          <div className="mb-3">
             <h1 className="text-2xl font-bold text-slate-800">라벨 발주 시스템</h1>
             <p className="text-sm text-slate-500 mt-1">전체 라벨 {labels.length}종 등록 완료</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setActiveTab('inventory')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               <Package size={18} /> 재고리스트
             </button>
@@ -971,17 +972,24 @@ export default function App() {
             if (lowStockLabels.length === 0) return null;
             return (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 text-red-700 font-bold mb-2">
-                  <AlertCircle size={18} /> 안전재고 미달 라벨 ({lowStockLabels.length}건)
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-red-700 font-bold">
+                    <AlertCircle size={18} /> 안전재고 미달 라벨 ({lowStockLabels.length}건)
+                  </div>
+                  <button onClick={() => setLowStockExpanded(v => !v)} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-red-100 transition-colors">
+                    {lowStockExpanded ? '▲ 숨기기' : '▼ 펼치기'}
+                  </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {lowStockLabels.map(l => (
-                    <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100">
-                      <span className="font-medium text-slate-700">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
-                      <span className="text-red-600 font-bold ml-2">{l.stock} / {l.safetyStock}</span>
-                    </div>
-                  ))}
-                </div>
+                {lowStockExpanded && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                    {lowStockLabels.map(l => (
+                      <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100">
+                        <span className="font-medium text-slate-700">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
+                        <span className="text-red-600 font-bold ml-2">{l.stock} / {l.safetyStock}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}

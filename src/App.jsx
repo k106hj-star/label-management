@@ -316,6 +316,7 @@ const DATA_VERSION = 2;
 export default function App() {
   const [activeTab, setActiveTab] = useState('inventory');
   const [lowStockExpanded, setLowStockExpanded] = useState(true);
+  const [navExpanded, setNavExpanded] = useState(true);
 
   const [labels, setLabels] = useState(() => {
     const savedVersion = localStorage.getItem('label_data_version');
@@ -931,11 +932,16 @@ export default function App() {
 
         {/* 헤더 */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <div className="mb-3">
-            <h1 className="text-2xl font-bold text-slate-800">라벨 발주 시스템</h1>
-            <p className="text-sm text-slate-500 mt-1">전체 라벨 {labels.length}종 등록 완료</p>
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800">라벨 발주 시스템</h1>
+              <p className="text-sm text-slate-500 mt-0.5">전체 라벨 {labels.length}종 등록 완료</p>
+            </div>
+            <button onClick={() => setNavExpanded(v => !v)} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors">
+              {navExpanded ? '▲ 메뉴 숨기기' : '▼ 메뉴 펼치기'}
+            </button>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {navExpanded && <div className="flex flex-wrap gap-2 mt-3">
             <button onClick={() => setActiveTab('inventory')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
               <Package size={18} /> 재고리스트
             </button>
@@ -963,7 +969,7 @@ export default function App() {
                 <span className="absolute -top-1.5 -right-1.5 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{documents.length > 99 ? '99+' : documents.length}</span>
               )}
             </button>
-          </div>
+          </div>}
         </div>
 
         {/* [1] 라벨 마스터 탭 */}

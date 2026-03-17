@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { db, storage } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -927,50 +927,49 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex">
 
-        {/* 헤더 */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-1">
+      {/* 왼쪽 사이드바 */}
+      <aside className={`${navExpanded ? 'w-52' : 'w-14'} min-h-screen bg-white border-r border-slate-200 flex flex-col transition-all duration-200 shrink-0`} style={{position:'sticky',top:0,height:'100vh',overflowY:'auto'}}>
+        <div className="p-4 border-b border-slate-100">
+          {navExpanded ? (
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">라벨 발주 시스템</h1>
-              <p className="text-sm text-slate-500 mt-0.5">전체 라벨 {labels.length}종 등록 완료</p>
+              <h1 className="text-sm font-bold text-slate-800 leading-tight">라벨 발주 시스템</h1>
+              <p className="text-xs text-slate-400 mt-0.5">{labels.length}종 등록</p>
             </div>
-            <button onClick={() => setNavExpanded(v => !v)} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors">
-              {navExpanded ? '▲ 메뉴 숨기기' : '▼ 메뉴 펼치기'}
-            </button>
-          </div>
-          {navExpanded && <div className="flex flex-wrap gap-2 mt-3">
-            <button onClick={() => setActiveTab('inventory')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'inventory' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <Package size={18} /> 재고리스트
-            </button>
-            <button onClick={() => setActiveTab('bom')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'bom' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <Layers size={18} /> 상품 세팅
-            </button>
-            <button onClick={() => setActiveTab('calc')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'calc' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <Calculator size={18} /> 발주 계산기
-            </button>
-            <button onClick={() => setActiveTab('orders')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'orders' ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <ClipboardList size={18} /> 저장리스트
-              {savedOrders.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{savedOrders.length}</span>
-              )}
-            </button>
-            <button onClick={() => setActiveTab('logs')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'logs' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <History size={18} /> 재고 로그
-              {stockLogs.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-slate-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{stockLogs.length > 99 ? '99+' : stockLogs.length}</span>
-              )}
-            </button>
-            <button onClick={() => setActiveTab('docs')} className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'docs' ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-              <FolderOpen size={18} /> 자료실
-              {documents.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-teal-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{documents.length > 99 ? '99+' : documents.length}</span>
-              )}
-            </button>
-          </div>}
+          ) : (
+            <Package size={18} className="text-blue-600 mx-auto" />
+          )}
         </div>
+        <nav className="flex-1 py-2 px-2 space-y-0.5">
+          {[
+            { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
+            { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
+            { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
+            { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.length },
+            { id:'logs', label:'재고 로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-200', badge:stockLogs.length },
+            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-teal-700', bg:'bg-teal-50', badge:documents.length },
+          ].map(item => (
+            <button key={item.id} onClick={() => setActiveTab(item.id)}
+              className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>
+              <span className="shrink-0">{item.icon}</span>
+              {navExpanded && <span className="truncate">{item.label}</span>}
+              {navExpanded && item.badge > 0 && (
+                <span className="ml-auto bg-slate-400 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{item.badge > 99 ? '99+' : item.badge}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+        <div className="p-2 border-t border-slate-100">
+          <button onClick={() => setNavExpanded(v => !v)} className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+            {navExpanded ? <><ChevronLeft size={13}/> 접기</> : <ChevronRight size={13}/>}
+          </button>
+        </div>
+      </aside>
+
+      {/* 메인 컨텐츠 */}
+      <div className="flex-1 min-w-0 p-6">
+      <div className="max-w-5xl mx-auto space-y-6">
 
         {/* [1] 라벨 마스터 탭 */}
         {activeTab === 'inventory' && (
@@ -2241,6 +2240,7 @@ export default function App() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

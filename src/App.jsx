@@ -546,7 +546,7 @@ export default function App() {
     if (!newLabel.name || !newLabel.code) return alert('라벨명과 품번은 필수입니다.');
     if (newLabel.img && newLabel._imgFile) addToLabelImageFolder(newLabel.name, newLabel.img, newLabel._imgFile);
     const { _imgFile, ...labelData } = newLabel;
-    setLabels([...labels, { ...labelData, id: Date.now() }]);
+    setLabels([{ ...labelData, id: Date.now() }, ...labels]);
     setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
     setShowAddLabelModal(false);
   };

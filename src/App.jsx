@@ -974,7 +974,7 @@ export default function App() {
 
       {/* 메인 컨텐츠 */}
       <div className="flex-1 min-w-0 p-6">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="w-full max-w-[1600px] mx-auto space-y-6">
 
         {/* [1] 라벨 마스터 탭 */}
         {activeTab === 'inventory' && (

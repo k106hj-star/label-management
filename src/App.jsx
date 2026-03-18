@@ -1080,7 +1080,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pagedLabels.map(l => (
+                  {pagedLabels.map((l, lIdx) => (
                     <tr key={l.id} className="hover:bg-slate-50 transition-colors">
                       <td className="p-3">
                         <div className="relative group">
@@ -1144,7 +1144,7 @@ export default function App() {
                         {openMenuId === l.id && (
                           <>
                             <div className="fixed inset-0 z-20" onClick={() => setOpenMenuId(null)} />
-                            <div className="absolute right-0 top-10 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28">
+                            <div className={`absolute right-0 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28 ${lIdx >= pagedLabels.length - 3 ? 'bottom-10' : 'top-10'}`}>
                               <button onClick={() => startEdit(l)} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                 <Pencil size={14} /> 수정
                               </button>

@@ -679,12 +679,12 @@ export default function App() {
     const logItems = orderItems.map(d => {
       const label = labels.find(l => l.id === d.id);
       const before = label ? label.stock : 0;
-      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: Math.max(0, before - d.shortage) };
+      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
     });
     setLabels(prev => prev.map(label => {
       const matched = orderItems.find(d => d.id === label.id);
       if (matched) {
-        return { ...label, stock: Math.max(0, label.stock - matched.shortage) };
+        return { ...label, stock: label.stock - matched.shortage };
       }
       return label;
     }));
@@ -1101,7 +1101,7 @@ export default function App() {
                       <td className="p-3 font-medium text-slate-800">{l.name}</td>
                       <td className="p-3 text-sm text-slate-500">{l.code}</td>
                       <td className="p-3 text-sm">{l.size}</td>
-                      <td className={`p-3 text-right font-bold ${l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock.toLocaleString()}</td>
+                      <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : l.stock.toLocaleString()}</td>
                       <td className="p-3 text-right text-sm">
                         <input type="number" min="0" value={l.safetyStock || 0} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>

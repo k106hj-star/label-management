@@ -536,6 +536,19 @@ export default function App() {
       }
 
       setLabels(prev => [...prev, ...newLabels]);
+      // 자료실 재고리스트 폴더에 자동 저장
+      const csvDoc = {
+        id: Date.now() + Math.random(),
+        name: file.name,
+        storageName: '',
+        url: '',
+        size: file.size,
+        ext: 'csv',
+        category: '재고리스트',
+        uploadedAt: new Date().toISOString(),
+        memo: '',
+      };
+      setDocuments(prev => [csvDoc, ...prev.filter(d => !(d.category === '재고리스트' && d.name === file.name))]);
       alert(`총 ${parsed.length}개 중 ${newLabels.length}개의 새로운 라벨이 등록되었습니다.\n(중복 ${parsed.length - newLabels.length}개 제외)`);
     };
     reader.readAsText(file, 'UTF-8');
@@ -831,13 +844,13 @@ export default function App() {
     } catch(e) {}
   }, [documents]);
 
-  const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'발주리스트'|'재고로그'
+  const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'재고리스트'|'재고로그'
   const [docSearch, setDocSearch] = useState('');
   const [docUploading, setDocUploading] = useState(false);
 
   const DOC_FOLDERS = [
     { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-600' },
-    { id: '발주리스트', label: '발주리스트', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-600' },
+    { id: '재고리스트', label: '재고리스트', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-600' },
     { id: '재고로그', label: '재고로그', icon: History, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', activeBg: 'bg-green-600' },
   ];
 

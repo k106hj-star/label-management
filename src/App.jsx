@@ -450,11 +450,30 @@ export default function App() {
     setEditLabel(null);
   };
 
+  const addToLabelImageFolder = (labelName, url, file) => {
+    const ext = (file?.name || 'jpg').split('.').pop();
+    const docEntry = {
+      id: Date.now() + Math.random(),
+      name: `${labelName || '라벨이미지'}.${ext}`,
+      storageName: '',
+      url,
+      size: file?.size || 0,
+      ext,
+      category: '라벨이미지',
+      uploadedAt: new Date().toISOString(),
+      memo: '',
+    };
+    setDocuments(prev => [docEntry, ...prev.filter(d => !(d.category === '라벨이미지' && d.name === docEntry.name))]);
+  };
+
   const handleEditImageUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
       const url = await uploadToStorage(file);
-      setEditLabel(prev => ({ ...prev, img: url }));
+      setEditLabel(prev => {
+        addToLabelImageFolder(prev.name, url, file);
+        return { ...prev, img: url };
+      });
     }
   };
 
@@ -490,7 +509,7 @@ export default function App() {
     const file = e.target.files[0];
     if (file) {
       const url = await uploadToStorage(file);
-      setNewLabel(prev => ({ ...prev, img: url }));
+      setNewLabel(prev => ({ ...prev, img: url, _imgFile: file }));
     }
   };
 
@@ -525,7 +544,9 @@ export default function App() {
 
   const addLabel = () => {
     if (!newLabel.name || !newLabel.code) return alert('라벨명과 품번은 필수입니다.');
-    setLabels([...labels, { ...newLabel, id: Date.now() }]);
+    if (newLabel.img && newLabel._imgFile) addToLabelImageFolder(newLabel.name, newLabel.img, newLabel._imgFile);
+    const { _imgFile, ...labelData } = newLabel;
+    setLabels([...labels, { ...labelData, id: Date.now() }]);
     setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
     setShowAddLabelModal(false);
   };
@@ -1068,6 +1089,7 @@ export default function App() {
                               const file = e.target.files[0];
                               if (file) {
                                 const url = await uploadToStorage(file);
+                                addToLabelImageFolder(l.name, url, file);
                                 setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: url } : item));
                               }
                             }} />

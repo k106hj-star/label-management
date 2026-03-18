@@ -809,12 +809,15 @@ export default function App() {
     } catch(e) {}
   }, [documents]);
 
-  const [docCategory, setDocCategory] = useState('전체');
+  const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'발주리스트'|'재고로그'
   const [docSearch, setDocSearch] = useState('');
   const [docUploading, setDocUploading] = useState(false);
-  const [docNewCategory, setDocNewCategory] = useState('일반');
 
-  const docCategories = ['전체', ...Array.from(new Set(documents.map(d => d.category).filter(Boolean)))];
+  const DOC_FOLDERS = [
+    { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-600' },
+    { id: '발주리스트', label: '발주리스트', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-600' },
+    { id: '재고로그', label: '재고로그', icon: History, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', activeBg: 'bg-green-600' },
+  ];
 
   const getFileIcon = (ext) => {
     const e = (ext || '').toLowerCase();
@@ -850,7 +853,7 @@ export default function App() {
           url,
           size: file.size,
           ext,
-          category: docNewCategory || '일반',
+          category: docActiveFolder || '라벨이미지',
           uploadedAt: new Date().toISOString(),
           memo: '',
         };
@@ -873,7 +876,7 @@ export default function App() {
   };
 
   const filteredDocs = documents.filter(d => {
-    const catMatch = docCategory === '전체' || d.category === docCategory;
+    const catMatch = !docActiveFolder || d.category === docActiveFolder;
     const searchMatch = !docSearch.trim() || d.name.toLowerCase().includes(docSearch.toLowerCase());
     return catMatch && searchMatch;
   });
@@ -2193,78 +2196,100 @@ export default function App() {
       {/* [6] 자료실 탭 */}
       {activeTab === 'docs' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+          {/* 헤더 */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-              <FolderOpen size={20} className="text-teal-600" /> 자료실
-              <span className="text-sm font-normal text-slate-400">({documents.length}개)</span>
-            </h2>
-            <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
-              <FilePlus size={16} />
-              {docUploading ? '업로드 중...' : '파일 추가'}
-              <input type="file" multiple className="hidden" onChange={handleDocUpload} disabled={docUploading} />
-            </label>
-          </div>
-
-          {/* 카테고리 + 검색 */}
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="flex gap-2 flex-wrap">
-              {docCategories.map(cat => (
-                <button key={cat} onClick={() => setDocCategory(cat)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${docCategory === cat ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                  {cat}
+              {docActiveFolder ? (
+                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
+                  <ChevronLeft size={18} />
                 </button>
-              ))}
-            </div>
-            <input
-              type="text" placeholder="파일명 검색" value={docSearch} onChange={e => setDocSearch(e.target.value)}
-              className="ml-auto px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-teal-300"
-            />
+              ) : null}
+              <FolderOpen size={20} className="text-teal-600" />
+              {docActiveFolder ? (
+                <>
+                  <span className="text-slate-400 font-normal">자료실</span>
+                  <span className="text-slate-400">/</span>
+                  {docActiveFolder}
+                  <span className="text-sm font-normal text-slate-400">({filteredDocs.length}개)</span>
+                </>
+              ) : (
+                <>자료실 <span className="text-sm font-normal text-slate-400">({documents.length}개)</span></>
+              )}
+            </h2>
+            {docActiveFolder && (
+              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+                <FilePlus size={16} />
+                {docUploading ? '업로드 중...' : '파일 추가'}
+                <input type="file" multiple className="hidden" onChange={handleDocUpload} disabled={docUploading} />
+              </label>
+            )}
           </div>
 
-          {/* 업로드 시 카테고리 설정 */}
-          <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">
-            <span className="text-xs font-medium text-slate-500">업로드 카테고리:</span>
-            <input
-              type="text" value={docNewCategory} onChange={e => setDocNewCategory(e.target.value)}
-              placeholder="카테고리명 입력"
-              className="px-2 py-1 border border-slate-200 rounded text-xs w-32 focus:outline-none focus:ring-2 focus:ring-teal-300"
-            />
-            <span className="text-xs text-slate-400">파일 추가 전에 카테고리를 설정하세요</span>
-          </div>
-
-          {/* 파일 목록 */}
-          {filteredDocs.length === 0 ? (
-            <div className="text-center py-16 text-slate-400">
-              <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{documents.length === 0 ? '파일을 추가해주세요.' : '검색 결과가 없습니다.'}</p>
+          {/* 폴더 목록 화면 */}
+          {!docActiveFolder ? (
+            <div className="grid grid-cols-3 gap-4">
+              {DOC_FOLDERS.map(folder => {
+                const count = documents.filter(d => d.category === folder.id).length;
+                const FolderIcon = folder.icon;
+                return (
+                  <button key={folder.id} onClick={() => { setDocActiveFolder(folder.id); setDocSearch(''); }}
+                    className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 ${folder.border} ${folder.bg} hover:shadow-md transition-all group`}>
+                    <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                      <FolderIcon size={28} className={folder.color} />
+                    </div>
+                    <div className="text-center">
+                      <p className={`font-bold text-base ${folder.color}`}>{folder.label}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{count}개 파일</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredDocs.map(d => (
-                <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                    {getFileIcon(d.ext)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {d.category && <span className="bg-teal-50 text-teal-700 rounded px-1.5 py-0.5 mr-2">{d.category}</span>}
-                      {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
-                    </p>
-                  </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a href={d.url} target="_blank" rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors" title="다운로드">
-                      <Download size={15} />
-                    </a>
-                    <button onClick={() => deleteDocument(d)}
-                      className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors" title="삭제">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
+            <>
+              {/* 검색 */}
+              <div className="flex items-center gap-2">
+                <Search size={15} className="text-slate-400" />
+                <input
+                  type="text" placeholder="파일명 검색" value={docSearch} onChange={e => setDocSearch(e.target.value)}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-teal-300"
+                />
+              </div>
+
+              {/* 파일 목록 */}
+              {filteredDocs.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">{docSearch ? '검색 결과가 없습니다.' : '파일을 추가해주세요.'}</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filteredDocs.map(d => (
+                    <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                      <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                        {getFileIcon(d.ext)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
+                        </p>
+                      </div>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <a href={d.url} target="_blank" rel="noopener noreferrer"
+                          className="p-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors" title="다운로드">
+                          <Download size={15} />
+                        </a>
+                        <button onClick={() => deleteDocument(d)}
+                          className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors" title="삭제">
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

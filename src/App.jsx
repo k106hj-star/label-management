@@ -768,6 +768,7 @@ export default function App() {
   }, [savedOrders]);
 
   // --- 재고 변동 로그 ---
+  const [logSearch, setLogSearch] = useState('');
   const [stockLogs, setStockLogs] = useState(() => {
     const saved = localStorage.getItem('label_stock_logs');
     return saved ? JSON.parse(saved) : [];
@@ -901,6 +902,16 @@ export default function App() {
     const searchMatch = !docSearch.trim() || d.name.toLowerCase().includes(docSearch.toLowerCase());
     return catMatch && searchMatch;
   });
+
+  const filteredStockLogs = (() => {
+    const q = logSearch.trim().toLowerCase();
+    if (!q) return stockLogs;
+    return stockLogs.filter(log =>
+      (log.productName || '').toLowerCase().includes(q) ||
+      (log.factory || '').toLowerCase().includes(q) ||
+      (log.items || []).some(item => (item.labelName || '').toLowerCase().includes(q))
+    );
+  })();
 
   // --- [3] 발주 계산기 함수 ---
   const [calcTarget, setCalcTarget] = useState('');
@@ -1973,19 +1984,29 @@ export default function App() {
       {/* [5] 재고 로그 탭 */}
       {activeTab === 'logs' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
               <History className="text-slate-600" size={20} /> 재고 변동 로그
               <span className="text-sm font-normal text-slate-400">총 {stockLogs.length}건</span>
             </h2>
-            {stockLogs.length > 0 && (
-              <button
-                onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
-                className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                전체 삭제
-              </button>
-            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                <Search size={14} className="text-slate-400" />
+                <input
+                  type="text" value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                  placeholder="상품명, 라벨명 검색"
+                  className="text-sm outline-none w-44 text-slate-700 placeholder-slate-400"
+                />
+              </div>
+              {stockLogs.length > 0 && (
+                <button
+                  onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+                  className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  전체 삭제
+                </button>
+              )}
+            </div>
           </div>
 
           {stockLogs.length === 0 ? (
@@ -1993,9 +2014,14 @@ export default function App() {
               <History size={40} className="mx-auto mb-3 opacity-30" />
               <p className="text-sm">발주 확정 또는 취소 시 로그가 기록됩니다.</p>
             </div>
+          ) : filteredStockLogs.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <Search size={32} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">검색 결과가 없습니다.</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {stockLogs.map(log => (
+              {filteredStockLogs.map(log => (
                 <div key={log.id} className={`rounded-xl border p-4 ${log.type === 'deduct' ? 'border-orange-200 bg-orange-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
                   {/* 로그 헤더 */}
                   <div className="flex items-center justify-between mb-3">
@@ -2043,6 +2069,7 @@ export default function App() {
               ))}
             </div>
           )}
+
         </div>
       )}
 

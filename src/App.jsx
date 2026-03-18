@@ -975,9 +975,9 @@ export default function App() {
             { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
             { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
-            { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.length },
-            { id:'logs', label:'재고 로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-200', badge:stockLogs.length },
-            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-teal-700', bg:'bg-teal-50', badge:documents.length },
+            { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
+            { id:'logs', label:'재고 로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-200', badge:stockLogs.filter(l => Date.now() - l.id < 3600000).length },
+            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-teal-700', bg:'bg-teal-50', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>

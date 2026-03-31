@@ -482,7 +482,9 @@ export default function App() {
   const [brandFilter, setBrandFilter] = useState('전체');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const brandList = ['전체', 'WV', 'JM', 'EZ', 'FP', '공용'];
+  const fixedBrands = ['WV', 'JM', 'EZ', 'FP', '공용'];
+  const dynamicBrands = [...new Set(labels.map(l => l.brand).filter(Boolean))].filter(b => !fixedBrands.includes(b)).sort();
+  const brandList = ['전체', ...fixedBrands, ...dynamicBrands];
 
   const executeSearch = () => { setSearchQuery(searchInput); setLabelPage(1); };
 

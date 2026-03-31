@@ -571,7 +571,7 @@ export default function App() {
   };
 
   const downloadCSVTemplate = () => {
-    const header = '브랜드,종류,라벨명,품번,사이즈,재고수량,안전재고,단가,공급처';
+    const header = '브랜드,종류,라벨명,품번,사이즈,현재고,안전재고,단가,공급처';
     const example = 'WV,행택,WV 메인택,WVHT001,one size,100,50,125,스마트';
     const bom = '\uFEFF'; // UTF-8 BOM for Excel
     const blob = new Blob([bom + header + '\n' + example], { type: 'text/csv;charset=utf-8;' });

@@ -541,29 +541,52 @@ export default function App() {
   const syncLabelImages = () => {
     const imagesDocs = documents.filter(d => d.category === '라벨이미지' && d.url);
     let matched = 0;
-    // 코드별 문서 목록 미리 인덱싱 (기본코드: -숫자 제거)
-    const docByExact = {};
-    const docByBaseCode = {};
+
+    // 인덱스 미리 구성
+    const docByExact = {};      // "라벨명 품번" → doc
+    const docByCode = {};       // 품번(정확) → [docs]
+    const docByBaseCode = {};   // 품번(-N 제거) → [docs]
+
     imagesDocs.forEach(d => {
-      const noExt = d.name.replace(/\.[^.]+$/, '').trim();
-      docByExact[noExt.toLowerCase()] = d;
-      const lastToken = noExt.split(' ').pop();
-      const baseCode = lastToken.replace(/-\d+$/, '').toLowerCase();
-      if (!docByBaseCode[baseCode]) docByBaseCode[baseCode] = [];
-      docByBaseCode[baseCode].push(d);
+      const noExt = d.name.replace(/\.[^.]+$/, '').trim().toLowerCase();
+      docByExact[noExt] = d;
+
+      // 파일명의 모든 토큰에서 품번 후보 추출
+      const tokens = noExt.split(/[\s_\-]+/).filter(Boolean);
+      tokens.forEach(token => {
+        if (!docByCode[token]) docByCode[token] = [];
+        docByCode[token].push(d);
+        // -숫자 제거한 기본 코드
+        const base = token.replace(/-?\d+$/, '');
+        if (base && base !== token) {
+          if (!docByBaseCode[base]) docByBaseCode[base] = [];
+          docByBaseCode[base].push(d);
+        }
+      });
     });
-    // 동일 코드 라벨 순서 추적
-    const codeIndex = {};
+
+    const codeUsed = {}; // 중복 배정 방지
     setLabels(prev => prev.map(label => {
       const key = `${label.name} ${label.code}`.toLowerCase();
-      // 1. 정확한 매칭
-      if (docByExact[key]) { matched++; return { ...label, img: docByExact[key].url }; }
-      // 2. 기본코드 매칭 (-숫자 무시), 같은 코드 라벨은 순서대로 배정
-      const baseCode = label.code.toLowerCase();
-      if (docByBaseCode[baseCode] && docByBaseCode[baseCode].length > 0) {
-        const idx = codeIndex[baseCode] || 0;
-        const doc = docByBaseCode[baseCode][idx];
-        if (doc) { codeIndex[baseCode] = idx + 1; matched++; return { ...label, img: doc.url }; }
+      const code = label.code.toLowerCase();
+      const baseCode = code.replace(/-?\d+$/, '');
+
+      // 1. 라벨명+품번 정확 매칭
+      if (docByExact[key] && !codeUsed[docByExact[key].id]) {
+        codeUsed[docByExact[key].id] = true; matched++;
+        return { ...label, img: docByExact[key].url };
+      }
+      // 2. 품번 정확 매칭 (파일명 토큰 중 하나가 품번과 일치)
+      const exactDocs = (docByCode[code] || []).filter(d => !codeUsed[d.id]);
+      if (exactDocs.length > 0) {
+        codeUsed[exactDocs[0].id] = true; matched++;
+        return { ...label, img: exactDocs[0].url };
+      }
+      // 3. 기본 품번 매칭 (-N 제거 후 일치)
+      const baseDocs = (docByBaseCode[baseCode] || []).filter(d => !codeUsed[d.id]);
+      if (baseDocs.length > 0) {
+        codeUsed[baseDocs[0].id] = true; matched++;
+        return { ...label, img: baseDocs[0].url };
       }
       return label;
     }));

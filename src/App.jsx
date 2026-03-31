@@ -540,23 +540,19 @@ export default function App() {
   // CSV 대량 업로드 핸들러
   const syncLabelImages = () => {
     const imagesDocs = documents.filter(d => d.category === '라벨이미지' && d.url);
-    let matched = 0;
 
     // 인덱스 미리 구성
-    const docByExact = {};      // "라벨명 품번" → doc
-    const docByCode = {};       // 품번(정확) → [docs]
-    const docByBaseCode = {};   // 품번(-N 제거) → [docs]
+    const docByExact = {};
+    const docByCode = {};
+    const docByBaseCode = {};
 
     imagesDocs.forEach(d => {
       const noExt = d.name.replace(/\.[^.]+$/, '').trim().toLowerCase();
       docByExact[noExt] = d;
-
-      // 파일명의 모든 토큰에서 품번 후보 추출
-      const tokens = noExt.split(/[\s_\-]+/).filter(Boolean);
+      const tokens = noExt.split(/[\s_]+/).filter(Boolean);
       tokens.forEach(token => {
         if (!docByCode[token]) docByCode[token] = [];
         docByCode[token].push(d);
-        // -숫자 제거한 기본 코드
         const base = token.replace(/-?\d+$/, '');
         if (base && base !== token) {
           if (!docByBaseCode[base]) docByBaseCode[base] = [];
@@ -565,31 +561,32 @@ export default function App() {
       });
     });
 
-    const codeUsed = {}; // 중복 배정 방지
-    setLabels(prev => prev.map(label => {
+    // labels 직접 map → setLabels에 결과 배열 전달 (카운터 정확히 집계)
+    const codeUsed = {};
+    let matched = 0;
+    const updatedLabels = labels.map(label => {
       const key = `${label.name} ${label.code}`.toLowerCase();
       const code = label.code.toLowerCase();
       const baseCode = code.replace(/-?\d+$/, '');
 
-      // 1. 라벨명+품번 정확 매칭
       if (docByExact[key] && !codeUsed[docByExact[key].id]) {
         codeUsed[docByExact[key].id] = true; matched++;
         return { ...label, img: docByExact[key].url };
       }
-      // 2. 품번 정확 매칭 (파일명 토큰 중 하나가 품번과 일치)
       const exactDocs = (docByCode[code] || []).filter(d => !codeUsed[d.id]);
       if (exactDocs.length > 0) {
         codeUsed[exactDocs[0].id] = true; matched++;
         return { ...label, img: exactDocs[0].url };
       }
-      // 3. 기본 품번 매칭 (-N 제거 후 일치)
       const baseDocs = (docByBaseCode[baseCode] || []).filter(d => !codeUsed[d.id]);
       if (baseDocs.length > 0) {
         codeUsed[baseDocs[0].id] = true; matched++;
         return { ...label, img: baseDocs[0].url };
       }
       return label;
-    }));
+    });
+
+    setLabels(updatedLabels);
     alert(`라벨이미지 폴더에서 ${matched}개 라벨에 이미지가 매핑되었습니다.`);
   };
 

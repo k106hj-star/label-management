@@ -523,13 +523,30 @@ export default function App() {
   const syncLabelImages = () => {
     const imagesDocs = documents.filter(d => d.category === '라벨이미지' && d.url);
     let matched = 0;
+    // 코드별 문서 목록 미리 인덱싱 (기본코드: -숫자 제거)
+    const docByExact = {};
+    const docByBaseCode = {};
+    imagesDocs.forEach(d => {
+      const noExt = d.name.replace(/\.[^.]+$/, '').trim();
+      docByExact[noExt.toLowerCase()] = d;
+      const lastToken = noExt.split(' ').pop();
+      const baseCode = lastToken.replace(/-\d+$/, '').toLowerCase();
+      if (!docByBaseCode[baseCode]) docByBaseCode[baseCode] = [];
+      docByBaseCode[baseCode].push(d);
+    });
+    // 동일 코드 라벨 순서 추적
+    const codeIndex = {};
     setLabels(prev => prev.map(label => {
       const key = `${label.name} ${label.code}`.toLowerCase();
-      const doc = imagesDocs.find(d => {
-        const docName = d.name.replace(/\.[^.]+$/, '').toLowerCase(); // 확장자 제거
-        return docName === key;
-      });
-      if (doc) { matched++; return { ...label, img: doc.url }; }
+      // 1. 정확한 매칭
+      if (docByExact[key]) { matched++; return { ...label, img: docByExact[key].url }; }
+      // 2. 기본코드 매칭 (-숫자 무시), 같은 코드 라벨은 순서대로 배정
+      const baseCode = label.code.toLowerCase();
+      if (docByBaseCode[baseCode] && docByBaseCode[baseCode].length > 0) {
+        const idx = codeIndex[baseCode] || 0;
+        const doc = docByBaseCode[baseCode][idx];
+        if (doc) { codeIndex[baseCode] = idx + 1; matched++; return { ...label, img: doc.url }; }
+      }
       return label;
     }));
     alert(`라벨이미지 폴더에서 ${matched}개 라벨에 이미지가 매핑되었습니다.`);

@@ -1099,7 +1099,6 @@ export default function App() {
             { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
             { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
-            { id:'logs', label:'재고 로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-200', badge:stockLogs.filter(l => Date.now() - l.id < 3600000).length },
             { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-teal-700', bg:'bg-teal-50', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
@@ -2478,6 +2477,85 @@ export default function App() {
                 );
               })}
             </div>
+            </>
+          ) : docActiveFolder === '재고로그' ? (
+            /* 재고로그 폴더 = 재고 변동 로그 뷰 */
+            <>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <span className="text-sm text-slate-500">총 {stockLogs.length}건</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                    <Search size={14} className="text-slate-400" />
+                    <input type="text" value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                      placeholder="상품명, 라벨명 검색"
+                      className="text-sm outline-none w-44 text-slate-700 placeholder-slate-400" />
+                  </div>
+                  {stockLogs.length > 0 && (
+                    <button onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+                      className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors">
+                      전체 삭제
+                    </button>
+                  )}
+                </div>
+              </div>
+              {stockLogs.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <History size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">발주 확정 또는 취소 시 로그가 기록됩니다.</p>
+                </div>
+              ) : filteredStockLogs.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <Search size={32} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">검색 결과가 없습니다.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredStockLogs.map(log => (
+                    <div key={log.id} className={`rounded-xl border p-4 ${log.type === 'deduct' ? 'border-orange-200 bg-orange-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${log.type === 'deduct' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {log.type === 'deduct' ? '📦 발주 확정 (재고 차감)' : '↩ 확정 취소 (재고 원복)'}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-700">{log.productName}</span>
+                          {log.factory && log.factory !== '-' && (
+                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="text-slate-400 border-b border-slate-200">
+                              <th className="text-left pb-1.5 font-medium">라벨명</th>
+                              <th className="text-center pb-1.5 font-medium">사이즈</th>
+                              <th className="text-right pb-1.5 font-medium">변경 전</th>
+                              <th className="text-center pb-1.5 font-medium">변동량</th>
+                              <th className="text-right pb-1.5 font-medium">변경 후</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {(log.items || []).map((item, i) => (
+                              <tr key={i} className="hover:bg-white/60">
+                                <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
+                                <td className="py-1.5 text-center text-slate-500">{item.size}</td>
+                                <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
+                                <td className="py-1.5 text-center font-bold">
+                                  <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>
+                                    {item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <>

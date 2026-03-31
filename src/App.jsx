@@ -1080,15 +1080,18 @@ export default function App() {
 
       {/* 왼쪽 사이드바 */}
       <aside className={`${navExpanded ? 'w-52' : 'w-14'} min-h-screen bg-white border-r border-slate-200 flex flex-col transition-all duration-200 shrink-0`} style={{position:'sticky',top:0,height:'100vh',overflowY:'auto'}}>
-        <div className="p-4 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 flex items-center justify-between gap-1">
           {navExpanded ? (
-            <div>
+            <div className="min-w-0">
               <h1 className="text-sm font-bold text-slate-800 leading-tight">라벨 발주 시스템</h1>
               <p className="text-xs text-slate-400 mt-0.5">{labels.length}종 등록</p>
             </div>
           ) : (
             <Package size={18} className="text-blue-600 mx-auto" />
           )}
+          <button onClick={() => setNavExpanded(v => !v)} className="flex items-center justify-center gap-0.5 p-1 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0">
+            {navExpanded ? <><ChevronLeft size={13}/> 접기</> : <ChevronRight size={13}/>}
+          </button>
         </div>
         <nav className="flex-1 py-2 px-2 space-y-0.5">
           {[
@@ -1109,11 +1112,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <div className="p-2 border-t border-slate-100">
-          <button onClick={() => setNavExpanded(v => !v)} className="w-full flex items-center justify-center gap-1 py-1.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-            {navExpanded ? <><ChevronLeft size={13}/> 접기</> : <ChevronRight size={13}/>}
-          </button>
-        </div>
       </aside>
 
       {/* 메인 컨텐츠 */}

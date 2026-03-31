@@ -1259,15 +1259,6 @@ export default function App() {
                               <ZoomIn size={14} />
                             </button>
                           )}
-                          {l.img && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: '' } : item)); }}
-                              className="absolute -bottom-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
-                              title="이미지 삭제"
-                            >
-                              <X size={12} />
-                            </button>
-                          )}
                         </div>
                       </td>
                       <td className="p-3">
@@ -2408,14 +2399,14 @@ export default function App() {
                 <label className="block text-xs text-slate-500 mb-1">이미지</label>
                 <div className="flex items-center gap-3">
                   {editLabel.img && (
-                    <div className="relative group/editimg">
+                    <div className="flex items-center gap-2">
                       <img src={editLabel.img} alt="preview" className="w-12 h-12 rounded object-cover border border-slate-200" />
                       <button
                         onClick={() => setEditLabel(prev => ({ ...prev, img: '' }))}
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover/editimg:opacity-100 transition-opacity shadow-md"
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
                         title="이미지 삭제"
                       >
-                        <X size={12} />
+                        <Trash2 size={12} /> 이미지 삭제
                       </button>
                     </div>
                   )}

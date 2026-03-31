@@ -520,6 +520,21 @@ export default function App() {
   };
 
   // CSV 대량 업로드 핸들러
+  const syncLabelImages = () => {
+    const imagesDocs = documents.filter(d => d.category === '라벨이미지' && d.url);
+    let matched = 0;
+    setLabels(prev => prev.map(label => {
+      const key = `${label.name} ${label.code}`.toLowerCase();
+      const doc = imagesDocs.find(d => {
+        const docName = d.name.replace(/\.[^.]+$/, '').toLowerCase(); // 확장자 제거
+        return docName === key;
+      });
+      if (doc) { matched++; return { ...label, img: doc.url }; }
+      return label;
+    }));
+    alert(`라벨이미지 폴더에서 ${matched}개 라벨에 이미지가 매핑되었습니다.`);
+  };
+
   const downloadCSVTemplate = () => {
     const header = '브랜드,종류,라벨 명,사이즈,품번,재고수량,단가,공급처';
     const example = 'WV,행택,WV 메인택,one size,WVHT001,100,125,스마트';
@@ -2388,6 +2403,12 @@ export default function App() {
 
           {/* 폴더 목록 화면 */}
           {!docActiveFolder ? (
+            <>
+            <div className="flex justify-end">
+              <button onClick={syncLabelImages} className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-medium transition-colors" title="라벨이미지 폴더의 파일명(라벨명 품번)을 기준으로 재고리스트 이미지 자동 매핑">
+                <ImageIcon size={14} /> 재고리스트에 이미지 매핑
+              </button>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               {DOC_FOLDERS.map(folder => {
                 const count = documents.filter(d => d.category === folder.id).length;
@@ -2406,6 +2427,7 @@ export default function App() {
                 );
               })}
             </div>
+            </>
           ) : (
             <>
               {/* 검색 */}

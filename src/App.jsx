@@ -467,7 +467,11 @@ export default function App() {
 
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
+    const original = labels.find(l => l.id === editLabel.id);
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
+    const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
+    if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
     setEditLabel(null);
   };
 
@@ -587,6 +591,7 @@ export default function App() {
     });
 
     setLabels(updatedLabels);
+    if (matched > 0) addLog({ type: 'image_sync', count: matched, summary: `이미지 자동 매핑: ${matched}개 라벨에 이미지 연결` });
     alert(`라벨이미지 폴더에서 ${matched}개 라벨에 이미지가 매핑되었습니다.`);
   };
 
@@ -632,6 +637,7 @@ export default function App() {
       }
 
       setLabels(prev => [...prev, ...newLabels]);
+      addLog({ type: 'csv_import', count: newLabels.length, fileName: file.name, summary: `CSV 가져오기: ${file.name} (${newLabels.length}개 신규 등록)` });
       // 자료실 재고리스트 폴더에 자동 저장
       const csvDoc = {
         id: Date.now() + Math.random(),
@@ -656,13 +662,16 @@ export default function App() {
     if (newLabel.img && newLabel._imgFile) addToLabelImageFolder(newLabel.name, newLabel.img, newLabel._imgFile, newLabel.code);
     const { _imgFile, ...labelData } = newLabel;
     setLabels([{ ...labelData, id: Date.now() }, ...labels]);
+    addLog({ type: 'add', labelName: newLabel.name, labelCode: newLabel.code, labelBrand: newLabel.brand, summary: `라벨 신규 등록: ${newLabel.name} (${newLabel.code})` });
     setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
     setShowAddLabelModal(false);
   };
 
   const deleteLabel = (id) => {
     if (window.confirm('정말 삭제하시겠습니까?')) {
+      const label = labels.find(l => l.id === id);
       setLabels(labels.filter(l => l.id !== id));
+      if (label) addLog({ type: 'delete', labelId: id, labelName: label.name, labelCode: label.code, labelBrand: label.brand, summary: `라벨 삭제: ${label.name} (${label.code})` });
       setProducts(products.map(p => ({
         ...p,
         bom: p.bom.filter(b => b.labelId !== id)
@@ -909,6 +918,11 @@ export default function App() {
     } catch(e) {}
   }, [stockLogs]);
 
+  const addLog = (entry) => {
+    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), ...entry }, ...prev]);
+  };
+  const safetyStockPrev = useRef({});
+
   // --- 자료실 ---
   const [documents, setDocuments] = useState(() => {
     const saved = localStorage.getItem('label_documents');
@@ -1016,8 +1030,10 @@ export default function App() {
     const q = logSearch.trim().toLowerCase();
     if (!q) return stockLogs;
     return stockLogs.filter(log =>
+      (log.summary || '').toLowerCase().includes(q) ||
       (log.productName || '').toLowerCase().includes(q) ||
       (log.factory || '').toLowerCase().includes(q) ||
+      (log.labelName || '').toLowerCase().includes(q) ||
       (log.items || []).some(item => (item.labelName || '').toLowerCase().includes(q))
     );
   })();
@@ -1073,6 +1089,97 @@ export default function App() {
       return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost };
     }).filter(Boolean);
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
+  };
+
+  const logTypeConfig = {
+    deduct:      { border: 'border-orange-200', bg: 'bg-orange-50/40',  badge: 'bg-orange-100 text-orange-700',   label: '📦 발주 확정 (재고 차감)' },
+    restore:     { border: 'border-blue-200',   bg: 'bg-blue-50/40',    badge: 'bg-blue-100 text-blue-700',      label: '↩ 확정 취소 (재고 원복)' },
+    add:         { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',    label: '➕ 라벨 신규 등록' },
+    delete:      { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',        label: '🗑 라벨 삭제' },
+    edit:        { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',  label: '✏️ 라벨 수정' },
+    bulk_delete: { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',        label: '🗑 일괄 삭제' },
+    bulk_edit:   { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',  label: '✏️ 일괄 수정' },
+    csv_import:  { border: 'border-teal-200',   bg: 'bg-teal-50/40',    badge: 'bg-teal-100 text-teal-700',      label: '📄 CSV 가져오기' },
+    safety_stock:{ border: 'border-amber-200',  bg: 'bg-amber-50/40',   badge: 'bg-amber-100 text-amber-700',    label: '🔒 안전재고 변경' },
+    image_update:{ border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',        label: '🖼 이미지 업데이트' },
+    image_sync:  { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',        label: '🔄 이미지 자동 매핑' },
+  };
+  const renderLogCard = (log) => {
+    const c = logTypeConfig[log.type] || { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700', label: log.type };
+    return (
+      <div key={log.id} className={`rounded-xl border p-4 ${c.border} ${c.bg}`}>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.badge}`}>{c.label}</span>
+            <span className="text-sm font-semibold text-slate-700">{log.summary || log.productName || log.labelName}</span>
+            {log.factory && log.factory !== '-' && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>}
+          </div>
+          <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
+        </div>
+        {(log.type === 'deduct' || log.type === 'restore') && log.items?.length > 0 && (
+          <div className="overflow-x-auto mt-1">
+            <table className="w-full text-xs">
+              <thead><tr className="text-slate-400 border-b border-slate-200">
+                <th className="text-left pb-1.5 font-medium">라벨명</th>
+                <th className="text-center pb-1.5 font-medium">사이즈</th>
+                <th className="text-right pb-1.5 font-medium">변경 전</th>
+                <th className="text-center pb-1.5 font-medium">변동량</th>
+                <th className="text-right pb-1.5 font-medium">변경 후</th>
+              </tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {log.items.map((item, i) => (
+                  <tr key={i} className="hover:bg-white/60">
+                    <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
+                    <td className="py-1.5 text-center text-slate-500">{item.size}</td>
+                    <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
+                    <td className="py-1.5 text-center font-bold">
+                      <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>{item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}</span>
+                    </td>
+                    <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {log.type === 'edit' && log.changes?.length > 0 && (
+          <div className="mt-2 space-y-1 pl-1">
+            {log.changes.map((ch, i) => (
+              <div key={i} className="text-xs flex items-center gap-2">
+                <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
+                <span className="text-red-400 line-through">{String(ch.before)}</span>
+                <span className="text-slate-300">→</span>
+                <span className="text-blue-500">{String(ch.after)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {log.type === 'bulk_delete' && log.labelNames?.length > 0 && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">{log.labelNames.join(', ')}</div>
+        )}
+        {log.type === 'bulk_edit' && log.fields && (
+          <div className="mt-2 pl-1 space-y-0.5">
+            {log.fields.brand && <div className="text-xs text-slate-500">브랜드 → <span className="text-blue-500 font-medium">{log.fields.brand}</span></div>}
+            {log.fields.type && <div className="text-xs text-slate-500">종류 → <span className="text-blue-500 font-medium">{log.fields.type}</span></div>}
+            {log.fields.vendor && <div className="text-xs text-slate-500">공급처 → <span className="text-blue-500 font-medium">{log.fields.vendor}</span></div>}
+          </div>
+        )}
+        {log.type === 'safety_stock' && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">
+            {log.labelName} ({log.labelCode}): <span className="text-red-400">{log.before}</span> → <span className="text-blue-500 font-medium">{log.after}</span>
+          </div>
+        )}
+        {log.type === 'csv_import' && log.fileName && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">{log.fileName} ({log.count}개 등록)</div>
+        )}
+        {log.type === 'image_sync' && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">{log.count}개 라벨에 이미지 연결</div>
+        )}
+        {log.type === 'image_update' && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">{log.labelName} ({log.labelCode})</div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -1190,7 +1297,7 @@ export default function App() {
                 <button onClick={() => { setBulkEditFields({ vendor: '', type: '', brand: '' }); setShowBulkEditModal(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
                   <Pencil size={13} /> 일괄 수정
                 </button>
-                <button onClick={() => { if (window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 삭제하시겠습니까?`)) { setLabels(prev => prev.filter(l => !selectedLabelIds.has(l.id))); setSelectedLabelIds(new Set()); } }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
+                <button onClick={() => { if (window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 삭제하시겠습니까?`)) { const deletedLabels = labels.filter(l => selectedLabelIds.has(l.id)); setLabels(prev => prev.filter(l => !selectedLabelIds.has(l.id))); addLog({ type: 'bulk_delete', count: deletedLabels.length, labelNames: deletedLabels.map(l => l.name), summary: `일괄 삭제: ${deletedLabels.length}개 라벨` }); setSelectedLabelIds(new Set()); } }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
                   <Trash2 size={13} /> 일괄 삭제
                 </button>
                 <button onClick={() => setSelectedLabelIds(new Set())} className="ml-auto text-xs text-slate-500 hover:text-slate-700">선택 해제</button>
@@ -1245,6 +1352,7 @@ export default function App() {
                                 const url = await uploadToStorage(file);
                                 addToLabelImageFolder(l.name, url, file);
                                 setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: url } : item));
+                                addLog({ type: 'image_update', labelId: l.id, labelName: l.name, labelCode: l.code, summary: `이미지 업데이트: ${l.name} (${l.code})` });
                               }
                             }} />
                             {l.img
@@ -1273,7 +1381,7 @@ export default function App() {
                       <td className="p-3 text-sm">{l.size}</td>
                       <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : l.stock.toLocaleString()}</td>
                       <td className="p-3 text-right text-sm">
-                        <input type="number" min="0" value={l.safetyStock || 0} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
+                        <input type="number" min="0" value={l.safetyStock || 0} onFocus={e => { safetyStockPrev.current[l.id] = parseInt(e.target.value) || 0; }} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} onBlur={e => { const newVal = parseInt(e.target.value) || 0; const oldVal = safetyStockPrev.current[l.id]; if (oldVal !== undefined && oldVal !== newVal) addLog({ type: 'safety_stock', labelId: l.id, labelName: l.name, labelCode: l.code, before: oldVal, after: newVal, summary: `안전재고 변경: ${l.name} (${l.code}) ${oldVal}→${newVal}` }); delete safetyStockPrev.current[l.id]; }} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>
@@ -1367,6 +1475,10 @@ export default function App() {
                   <div className="flex gap-2 mt-5 justify-end">
                     <button onClick={() => setShowBulkEditModal(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">취소</button>
                     <button onClick={() => {
+                      const changedFields = [];
+                      if (bulkEditFields.brand) changedFields.push(`브랜드→${bulkEditFields.brand}`);
+                      if (bulkEditFields.type) changedFields.push(`종류→${bulkEditFields.type}`);
+                      if (bulkEditFields.vendor) changedFields.push(`공급처→${bulkEditFields.vendor}`);
                       setLabels(prev => prev.map(l => {
                         if (!selectedLabelIds.has(l.id)) return l;
                         return {
@@ -1376,6 +1488,7 @@ export default function App() {
                           ...(bulkEditFields.vendor ? { vendor: bulkEditFields.vendor } : {}),
                         };
                       }));
+                      addLog({ type: 'bulk_edit', count: selectedLabelIds.size, fields: { ...bulkEditFields }, summary: `일괄 수정: ${selectedLabelIds.size}개 라벨 (${changedFields.join(', ')})` });
                       setShowBulkEditModal(false);
                       setSelectedLabelIds(new Set());
                     }} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">적용</button>
@@ -2189,7 +2302,7 @@ export default function App() {
           {stockLogs.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <History size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">발주 확정 또는 취소 시 로그가 기록됩니다.</p>
+              <p className="text-sm">변경 이력이 없습니다.</p>
             </div>
           ) : filteredStockLogs.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
@@ -2198,52 +2311,7 @@ export default function App() {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredStockLogs.map(log => (
-                <div key={log.id} className={`rounded-xl border p-4 ${log.type === 'deduct' ? 'border-orange-200 bg-orange-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
-                  {/* 로그 헤더 */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${log.type === 'deduct' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                        {log.type === 'deduct' ? '📦 발주 확정 (재고 차감)' : '↩ 확정 취소 (재고 원복)'}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-700">{log.productName}</span>
-                      {log.factory && log.factory !== '-' && (
-                        <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>
-                      )}
-                    </div>
-                    <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
-                  </div>
-                  {/* 라벨별 변동 내역 */}
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-slate-400 border-b border-slate-200">
-                          <th className="text-left pb-1.5 font-medium">라벨명</th>
-                          <th className="text-center pb-1.5 font-medium">사이즈</th>
-                          <th className="text-right pb-1.5 font-medium">변경 전</th>
-                          <th className="text-center pb-1.5 font-medium">변동량</th>
-                          <th className="text-right pb-1.5 font-medium">변경 후</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {(log.items || []).map((item, i) => (
-                          <tr key={i} className="hover:bg-white/60">
-                            <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
-                            <td className="py-1.5 text-center text-slate-500">{item.size}</td>
-                            <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
-                            <td className="py-1.5 text-center font-bold">
-                              <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>
-                                {item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}
-                              </span>
-                            </td>
-                            <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
+              {filteredStockLogs.map(log => renderLogCard(log))}
             </div>
           )}
 
@@ -2501,7 +2569,7 @@ export default function App() {
               {stockLogs.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
                   <History size={40} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">발주 확정 또는 취소 시 로그가 기록됩니다.</p>
+                  <p className="text-sm">변경 이력이 없습니다.</p>
                 </div>
               ) : filteredStockLogs.length === 0 ? (
                 <div className="text-center py-10 text-slate-400">
@@ -2510,50 +2578,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredStockLogs.map(log => (
-                    <div key={log.id} className={`rounded-xl border p-4 ${log.type === 'deduct' ? 'border-orange-200 bg-orange-50/40' : 'border-blue-200 bg-blue-50/40'}`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${log.type === 'deduct' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                            {log.type === 'deduct' ? '📦 발주 확정 (재고 차감)' : '↩ 확정 취소 (재고 원복)'}
-                          </span>
-                          <span className="text-sm font-semibold text-slate-700">{log.productName}</span>
-                          {log.factory && log.factory !== '-' && (
-                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>
-                          )}
-                        </div>
-                        <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
-                      </div>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="text-slate-400 border-b border-slate-200">
-                              <th className="text-left pb-1.5 font-medium">라벨명</th>
-                              <th className="text-center pb-1.5 font-medium">사이즈</th>
-                              <th className="text-right pb-1.5 font-medium">변경 전</th>
-                              <th className="text-center pb-1.5 font-medium">변동량</th>
-                              <th className="text-right pb-1.5 font-medium">변경 후</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(log.items || []).map((item, i) => (
-                              <tr key={i} className="hover:bg-white/60">
-                                <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
-                                <td className="py-1.5 text-center text-slate-500">{item.size}</td>
-                                <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
-                                <td className="py-1.5 text-center font-bold">
-                                  <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>
-                                    {item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}
-                                  </span>
-                                </td>
-                                <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
+                  {filteredStockLogs.map(log => renderLogCard(log))}
                 </div>
               )}
             </>

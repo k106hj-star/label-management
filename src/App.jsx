@@ -438,6 +438,9 @@ export default function App() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editLabel, setEditLabel] = useState(null);
   const [labelLogModal, setLabelLogModal] = useState(null); // 라벨 로그 모달 (label 객체)
+  const [selectedLabelIds, setSelectedLabelIds] = useState(new Set());
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [bulkEditFields, setBulkEditFields] = useState({ vendor: '', type: '', brand: '' });
 
   const startEdit = (label) => {
     setEditLabel({ ...label });
@@ -1106,10 +1109,37 @@ export default function App() {
               </div>
             </div>
 
+            {/* 일괄 액션 바 */}
+            {selectedLabelIds.size > 0 && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <span className="text-sm font-medium text-blue-700">{selectedLabelIds.size}개 선택됨</span>
+                <button onClick={() => { setBulkEditFields({ vendor: '', type: '', brand: '' }); setShowBulkEditModal(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
+                  <Pencil size={13} /> 일괄 수정
+                </button>
+                <button onClick={() => { if (window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 삭제하시겠습니까?`)) { setLabels(prev => prev.filter(l => !selectedLabelIds.has(l.id))); setSelectedLabelIds(new Set()); } }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
+                  <Trash2 size={13} /> 일괄 삭제
+                </button>
+                <button onClick={() => setSelectedLabelIds(new Set())} className="ml-auto text-xs text-slate-500 hover:text-slate-700">선택 해제</button>
+              </div>
+            )}
+
             <div className="overflow-auto max-h-[70vh] border border-slate-200 rounded-lg">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-sm text-slate-600">
+                    <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10 w-8">
+                      <input type="checkbox"
+                        checked={pagedLabels.length > 0 && pagedLabels.every(l => selectedLabelIds.has(l.id))}
+                        onChange={e => {
+                          setSelectedLabelIds(prev => {
+                            const next = new Set(prev);
+                            pagedLabels.forEach(l => e.target.checked ? next.add(l.id) : next.delete(l.id));
+                            return next;
+                          });
+                        }}
+                        className="cursor-pointer w-4 h-4 accent-blue-600"
+                      />
+                    </th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">이미지</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">브랜드</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">종류</th>
@@ -1125,7 +1155,13 @@ export default function App() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pagedLabels.map((l, lIdx) => (
-                    <tr key={l.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={l.id} className={`hover:bg-slate-50 transition-colors ${selectedLabelIds.has(l.id) ? 'bg-blue-50' : ''}`}>
+                      <td className="p-3 w-8">
+                        <input type="checkbox" checked={selectedLabelIds.has(l.id)}
+                          onChange={e => setSelectedLabelIds(prev => { const next = new Set(prev); e.target.checked ? next.add(l.id) : next.delete(l.id); return next; })}
+                          className="cursor-pointer w-4 h-4 accent-blue-600"
+                        />
+                      </td>
                       <td className="p-3">
                         <div className="relative group">
                           <label className="cursor-pointer block">
@@ -1239,6 +1275,49 @@ export default function App() {
                 <button onClick={() => setLabelPage(labelTotalPages)} disabled={labelPage === labelTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
               </div>
             </div>
+
+            {/* 일괄 수정 모달 */}
+            {showBulkEditModal && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowBulkEditModal(false)}>
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">일괄 수정</h3>
+                  <p className="text-sm text-slate-400 mb-4">선택한 {selectedLabelIds.size}개 라벨에 적용됩니다. 비워두면 해당 항목은 변경되지 않습니다.</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">브랜드</label>
+                      <select value={bulkEditFields.brand} onChange={e => setBulkEditFields(p => ({ ...p, brand: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                        <option value="">변경 안 함</option>
+                        {['WV','JM','EZ','FP','공용'].map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">종류</label>
+                      <input type="text" placeholder="변경 안 함" value={bulkEditFields.type} onChange={e => setBulkEditFields(p => ({ ...p, type: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">공급처</label>
+                      <input type="text" placeholder="변경 안 함" value={bulkEditFields.vendor} onChange={e => setBulkEditFields(p => ({ ...p, vendor: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-5 justify-end">
+                    <button onClick={() => setShowBulkEditModal(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">취소</button>
+                    <button onClick={() => {
+                      setLabels(prev => prev.map(l => {
+                        if (!selectedLabelIds.has(l.id)) return l;
+                        return {
+                          ...l,
+                          ...(bulkEditFields.brand ? { brand: bulkEditFields.brand } : {}),
+                          ...(bulkEditFields.type ? { type: bulkEditFields.type } : {}),
+                          ...(bulkEditFields.vendor ? { vendor: bulkEditFields.vendor } : {}),
+                        };
+                      }));
+                      setShowBulkEditModal(false);
+                      setSelectedLabelIds(new Set());
+                    }} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">적용</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 신규 라벨 추가 모달 */}
             {showAddLabelModal && (

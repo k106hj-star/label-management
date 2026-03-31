@@ -956,6 +956,7 @@ export default function App() {
 
   const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'재고리스트'|'재고로그'
   const [docSearch, setDocSearch] = useState('');
+  const [docImageBrandFilter, setDocImageBrandFilter] = useState('전체');
   const [docUploading, setDocUploading] = useState(false);
 
   const DOC_FOLDERS = [
@@ -1020,10 +1021,22 @@ export default function App() {
     setDocuments(prev => prev.filter(d => d.id !== docItem.id));
   };
 
+  const getDocLabelBrand = (doc) => {
+    const matched = labels.find(l => l.img === doc.url);
+    if (matched?.brand) return matched.brand;
+    const nameNoExt = doc.name.replace(/\.[^.]+$/, '');
+    const firstWord = nameNoExt.split(/\s+/)[0];
+    const allBrands = [...new Set(labels.map(l => l.brand).filter(Boolean))];
+    return allBrands.includes(firstWord) ? firstWord : null;
+  };
+  const labelImgBrands = ['전체', ...new Set(
+    documents.filter(d => d.category === '라벨이미지').map(getDocLabelBrand).filter(Boolean)
+  )];
   const filteredDocs = documents.filter(d => {
     const catMatch = !docActiveFolder || d.category === docActiveFolder;
     const searchMatch = !docSearch.trim() || d.name.toLowerCase().includes(docSearch.toLowerCase());
-    return catMatch && searchMatch;
+    const brandMatch = docActiveFolder !== '라벨이미지' || docImageBrandFilter === '전체' || getDocLabelBrand(d) === docImageBrandFilter;
+    return catMatch && searchMatch && brandMatch;
   });
 
   const filteredStockLogs = (() => {
@@ -2494,7 +2507,7 @@ export default function App() {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
               {docActiveFolder ? (
-                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
+                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
                   <ChevronLeft size={18} />
                 </button>
               ) : null}
@@ -2584,6 +2597,17 @@ export default function App() {
             </>
           ) : (
             <>
+              {/* 라벨이미지 브랜드 필터 */}
+              {docActiveFolder === '라벨이미지' && (
+                <div className="flex flex-wrap gap-1.5">
+                  {labelImgBrands.map(brand => (
+                    <button key={brand} onClick={() => setDocImageBrandFilter(brand)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${docImageBrandFilter === brand ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700'}`}>
+                      {brand}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* 검색 */}
               <div className="flex items-center gap-2">
                 <Search size={15} className="text-slate-400" />

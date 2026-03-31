@@ -450,11 +450,12 @@ export default function App() {
     setEditLabel(null);
   };
 
-  const addToLabelImageFolder = (labelName, url, file) => {
+  const addToLabelImageFolder = (labelName, url, file, labelCode) => {
     const ext = (file?.name || 'jpg').split('.').pop();
+    const baseName = labelCode ? `${labelName} ${labelCode}` : (labelName || '라벨이미지');
     const docEntry = {
       id: Date.now() + Math.random(),
-      name: `${labelName || '라벨이미지'}.${ext}`,
+      name: `${baseName}.${ext}`,
       storageName: '',
       url,
       size: file?.size || 0,
@@ -463,7 +464,7 @@ export default function App() {
       uploadedAt: new Date().toISOString(),
       memo: '',
     };
-    setDocuments(prev => [docEntry, ...prev.filter(d => !(d.category === '라벨이미지' && d.name === docEntry.name))]);
+    setDocuments(prev => [docEntry, ...prev.filter(d => !(d.category === '라벨이미지' && d.name === docEntry.name && d.id !== docEntry.id))]);
   };
 
   const handleEditImageUpload = async (e) => {
@@ -471,7 +472,7 @@ export default function App() {
     if (file) {
       const url = await uploadToStorage(file);
       setEditLabel(prev => {
-        addToLabelImageFolder(prev.name, url, file);
+        addToLabelImageFolder(prev.name, url, file, prev.code);
         return { ...prev, img: url };
       });
     }
@@ -557,7 +558,7 @@ export default function App() {
 
   const addLabel = () => {
     if (!newLabel.name || !newLabel.code) return alert('라벨명과 품번은 필수입니다.');
-    if (newLabel.img && newLabel._imgFile) addToLabelImageFolder(newLabel.name, newLabel.img, newLabel._imgFile);
+    if (newLabel.img && newLabel._imgFile) addToLabelImageFolder(newLabel.name, newLabel.img, newLabel._imgFile, newLabel.code);
     const { _imgFile, ...labelData } = newLabel;
     setLabels([{ ...labelData, id: Date.now() }, ...labels]);
     setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });

@@ -571,14 +571,21 @@ export default function App() {
   };
 
   const downloadCSVTemplate = () => {
+    const escape = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
     const header = '브랜드,종류,라벨명,품번,사이즈,현재고,안전재고,단가,공급처';
-    const example = 'WV,행택,WV 메인택,WVHT001,one size,100,50,125,스마트';
-    const bom = '\uFEFF'; // UTF-8 BOM for Excel
-    const blob = new Blob([bom + header + '\n' + example], { type: 'text/csv;charset=utf-8;' });
+    const rows = labels.map(l => [
+      l.brand, l.type, l.name, l.code, l.size,
+      l.stock ?? 0, l.safetyStock ?? 0, l.price ?? 0, l.vendor ?? ''
+    ].map(escape).join(','));
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = '라벨_등록_양식.csv';
+    a.download = `라벨_재고리스트_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1153,7 +1160,7 @@ export default function App() {
                   <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
                 </label>
                 {/* 양식 다운로드 버튼 */}
-                <button onClick={downloadCSVTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition-colors" title="등록 양식 엑셀 다운로드">
+                <button onClick={downloadCSVTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition-colors" title="현재 재고리스트 CSV 다운로드">
                   <Download size={16} /> 양식 다운로드
                 </button>
               </div>

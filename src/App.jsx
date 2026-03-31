@@ -515,6 +515,19 @@ export default function App() {
   };
 
   // CSV 대량 업로드 핸들러
+  const downloadCSVTemplate = () => {
+    const header = '브랜드,종류,라벨 명,사이즈,품번,재고수량,단가,공급처';
+    const example = 'WV,행택,WV 메인택,one size,WVHT001,100,125,스마트';
+    const bom = '\uFEFF'; // UTF-8 BOM for Excel
+    const blob = new Blob([bom + header + '\n' + example], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '라벨_등록_양식.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1084,6 +1097,10 @@ export default function App() {
                   <Upload size={16} /> CSV 대량 등록
                   <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
                 </label>
+                {/* 양식 다운로드 버튼 */}
+                <button onClick={downloadCSVTemplate} className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-sm font-medium transition-colors" title="등록 양식 엑셀 다운로드">
+                  <Download size={16} /> 양식 다운로드
+                </button>
               </div>
             </div>
 

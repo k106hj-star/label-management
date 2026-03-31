@@ -72,43 +72,61 @@ async function uploadToStorage(file) {
 }
 
 // CSV 파서 함수 (따옴표 안의 쉼표 처리)
+function parseCSVLine(line) {
+  const fields = [];
+  let current = '', inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { fields.push(current); current = ''; }
+    else { current += ch; }
+  }
+  fields.push(current);
+  return fields.map(f => f.trim());
+}
+
 function parseCSV(csvText) {
   const lines = csvText.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map(h => h.trim());
+  // 헤더명으로 컬럼 인덱스 매핑 (구버전/신버전 모두 지원)
+  const col = (names) => {
+    for (const n of names) {
+      const idx = headers.findIndex(h => h === n);
+      if (idx !== -1) return idx;
+    }
+    return -1;
+  };
+  const iName   = col(['라벨명', '라벨 명']);
+  const iBrand  = col(['브랜드']);
+  const iType   = col(['종류']);
+  const iCode   = col(['품번']);
+  const iSize   = col(['사이즈']);
+  const iStock  = col(['재고수량', '현재고']);
+  const iSafety = col(['안전재고']);
+  const iPrice  = col(['단가']);
+  const iVendor = col(['공급처']);
+
   const results = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
-    const fields = [];
-    let current = '';
-    let inQuotes = false;
-    for (const ch of line) {
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === ',' && !inQuotes) {
-        fields.push(current);
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    fields.push(current);
-    if (fields.length < 7) continue;
-
-    const stockRaw = fields[5].replace(/,/g, '').trim();
-    const stock = (!stockRaw || stockRaw === '-') ? 0 : (parseInt(stockRaw) || 0);
-    const priceRaw = fields[6].replace(/,/g, '').trim();
-    const price = (!priceRaw || priceRaw === '-') ? 0 : (parseInt(priceRaw) || 0);
-
+    const f = parseCSVLine(line);
+    if (f.length < 5) continue;
+    const get = (idx) => (idx >= 0 && idx < f.length) ? f[idx] : '';
+    const stockRaw = get(iStock).replace(/,/g, '');
+    const priceRaw = get(iPrice).replace(/,/g, '');
+    const safetyRaw = get(iSafety).replace(/,/g, '');
     results.push({
       id: i,
-      brand: fields[0].trim(),
-      type: fields[1].trim(),
-      name: fields[2].trim(),
-      size: fields[3].trim(),
-      code: fields[4].trim(),
-      stock,
-      price,
-      vendor: (fields[7] || '').trim(),
+      brand: get(iBrand),
+      type: get(iType),
+      name: get(iName),
+      code: get(iCode),
+      size: get(iSize),
+      stock: (!stockRaw || stockRaw === '-') ? 0 : (parseInt(stockRaw) || 0),
+      safetyStock: (!safetyRaw || safetyRaw === '-') ? 0 : (parseInt(safetyRaw) || 0),
+      price: (!priceRaw || priceRaw === '-') ? 0 : (parseInt(priceRaw) || 0),
+      vendor: get(iVendor),
       img: ''
     });
   }
@@ -553,8 +571,8 @@ export default function App() {
   };
 
   const downloadCSVTemplate = () => {
-    const header = '브랜드,종류,라벨 명,사이즈,품번,재고수량,단가,공급처';
-    const example = 'WV,행택,WV 메인택,one size,WVHT001,100,125,스마트';
+    const header = '브랜드,종류,라벨명,품번,사이즈,재고수량,안전재고,단가,공급처';
+    const example = 'WV,행택,WV 메인택,WVHT001,one size,100,50,125,스마트';
     const bom = '\uFEFF'; // UTF-8 BOM for Excel
     const blob = new Blob([bom + header + '\n' + example], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -573,7 +591,7 @@ export default function App() {
       const text = event.target.result;
       const parsed = parseCSV(text);
       if (parsed.length === 0) {
-        alert('유효한 데이터가 없습니다. CSV 형식을 확인해주세요.\n\n필수 컬럼: 브랜드, 종류, 라벨 명, 사이즈, 품번, 재고수량, 단가, 공급처');
+        alert('유효한 데이터가 없습니다. CSV 형식을 확인해주세요.\n\n필수 컬럼: 브랜드, 종류, 라벨명, 품번, 사이즈, 재고수량, 안전재고, 단가, 공급처');
         return;
       }
       const existingKeys = new Set(labels.map(l => `${l.code}_${l.size}`));

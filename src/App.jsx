@@ -2183,7 +2183,7 @@ export default function App() {
                     <React.Fragment key={order.id}>
                       <tr className={`hover:bg-slate-50 ${order.applied ? 'bg-green-50/40' : ''}`}>
                         <td className="p-3 text-slate-400 text-xs whitespace-nowrap">{order.date}</td>
-                        <td className="p-3 font-medium text-slate-800">{order.productName || '(미선택)'}</td>
+                        <td className="p-3 font-medium text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline transition-colors" onClick={() => setViewOrder(order)}>{order.productName || '(미선택)'}</td>
                         <td className="p-3 text-slate-600">{order.factory || '-'}</td>
                         <td className="p-3 text-slate-600">{order.orderer || '-'}</td>
                         <td className="p-3 text-center text-slate-700">{order.details?.filter(d => d.shortage > 0).length || 0}종</td>

@@ -459,6 +459,7 @@ export default function App() {
   const [selectedLabelIds, setSelectedLabelIds] = useState(new Set());
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
   const [bulkEditFields, setBulkEditFields] = useState({ vendor: '', type: '', brand: '' });
+  const [csvImportPending, setCsvImportPending] = useState(null);
 
   const startEdit = (label) => {
     setEditLabel({ ...label });
@@ -618,6 +619,9 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const CSV_FILL_FIELDS = ['brand', 'type', 'size', 'stock', 'safetyStock', 'price', 'vendor'];
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
+
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -629,35 +633,59 @@ export default function App() {
         alert('유효한 데이터가 없습니다. CSV 형식을 확인해주세요.\n\n필수 컬럼: 브랜드, 종류, 라벨명, 품번, 사이즈, 재고수량, 안전재고, 단가, 공급처');
         return;
       }
-      const existingKeys = new Set(labels.map(l => `${l.code}_${l.size}`));
-      const newLabels = parsed
-        .filter(p => !existingKeys.has(`${p.code}_${p.size}`))
-        .map((p, idx) => ({ ...p, id: Date.now() + idx }));
 
-      if (newLabels.length === 0) {
-        alert(`${parsed.length}개 데이터 확인 완료.\n모든 데이터가 이미 등록되어 있습니다.`);
+      const isEmpty = (v) => v === undefined || v === null || v === '' || v === 0;
+      const newLabels = [];
+      const duplicateUpdates = [];
+
+      parsed.forEach((p, idx) => {
+        const existing = labels.find(l => l.name === p.name && l.code === p.code);
+        if (!existing) {
+          newLabels.push({ ...p, id: Date.now() + idx });
+        } else {
+          const fieldsToFill = {};
+          CSV_FILL_FIELDS.forEach(field => {
+            if (isEmpty(existing[field]) && !isEmpty(p[field])) {
+              fieldsToFill[field] = p[field];
+            }
+          });
+          if (Object.keys(fieldsToFill).length > 0) {
+            duplicateUpdates.push({ existing, fieldsToFill });
+          }
+        }
+      });
+
+      const duplicateCount = parsed.length - newLabels.length;
+      if (newLabels.length === 0 && duplicateUpdates.length === 0) {
+        alert(`${parsed.length}개 데이터 확인 완료.\n모든 데이터가 이미 등록되어 있으며 업데이트할 항목이 없습니다.`);
         return;
       }
 
-      setLabels(prev => [...prev, ...newLabels]);
-      addLog({ type: 'csv_import', count: newLabels.length, fileName: file.name, summary: `CSV 가져오기: ${file.name} (${newLabels.length}개 신규 등록)` });
-      // 자료실 재고리스트 폴더에 자동 저장
-      const csvDoc = {
-        id: Date.now() + Math.random(),
-        name: file.name,
-        storageName: '',
-        url: '',
-        size: file.size,
-        ext: 'csv',
-        category: '재고리스트',
-        uploadedAt: new Date().toISOString(),
-        memo: '',
-      };
-      setDocuments(prev => [csvDoc, ...prev.filter(d => !(d.category === '재고리스트' && d.name === file.name))]);
-      alert(`총 ${parsed.length}개 중 ${newLabels.length}개의 새로운 라벨이 등록되었습니다.\n(중복 ${parsed.length - newLabels.length}개 제외)`);
+      setCsvImportPending({ file, newLabels, duplicateUpdates, total: parsed.length, duplicateCount });
     };
     reader.readAsText(file, 'UTF-8');
     e.target.value = '';
+  };
+
+  const applyCSVImport = () => {
+    if (!csvImportPending) return;
+    const { file, newLabels, duplicateUpdates, total } = csvImportPending;
+    setLabels(prev => {
+      const updated = prev.map(l => {
+        const upd = duplicateUpdates.find(u => u.existing.id === l.id);
+        return upd ? { ...l, ...upd.fieldsToFill } : l;
+      });
+      return [...updated, ...newLabels];
+    });
+    addLog({ type: 'csv_import', count: newLabels.length, fileName: file.name, summary: `CSV 가져오기: ${file.name} (신규 ${newLabels.length}개, 업데이트 ${duplicateUpdates.length}개)` });
+    const csvDoc = {
+      id: Date.now() + Math.random(),
+      name: file.name, storageName: '', url: '', size: file.size,
+      ext: 'csv', category: '재고리스트', uploadedAt: new Date().toISOString(), memo: '',
+    };
+    setDocuments(prev => [csvDoc, ...prev.filter(d => !(d.category === '재고리스트' && d.name === file.name))]);
+    setCsvImportPending(null);
+    alert(`완료: 신규 ${newLabels.length}개 등록, 기존 ${duplicateUpdates.length}개 업데이트 (총 ${total}개 처리)`);
   };
 
   const addLabel = () => {
@@ -2670,6 +2698,67 @@ export default function App() {
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* CSV 대량 등록 확인 모달 */}
+      {csvImportPending && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCsvImportPending(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Upload size={18} className="text-emerald-600" /> CSV 대량 등록 확인
+              </h3>
+              <button onClick={() => setCsvImportPending(null)} className="text-slate-400 hover:text-red-500"><X size={20} /></button>
+            </div>
+
+            <div className="space-y-3">
+              {/* 신규 등록 */}
+              <div className={`rounded-lg p-3 ${csvImportPending.newLabels.length > 0 ? 'bg-green-50 border border-green-200' : 'bg-slate-50 border border-slate-200'}`}>
+                <p className="text-sm font-semibold text-slate-700">
+                  ➕ 신규 등록 <span className={`ml-1 font-bold ${csvImportPending.newLabels.length > 0 ? 'text-green-700' : 'text-slate-400'}`}>{csvImportPending.newLabels.length}개</span>
+                </p>
+                {csvImportPending.newLabels.length > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">{csvImportPending.newLabels.slice(0, 3).map(l => l.name).join(', ')}{csvImportPending.newLabels.length > 3 ? ` 외 ${csvImportPending.newLabels.length - 3}개` : ''}</p>
+                )}
+              </div>
+
+              {/* 중복 업데이트 */}
+              <div className={`rounded-lg p-3 ${csvImportPending.duplicateUpdates.length > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50 border border-slate-200'}`}>
+                <p className="text-sm font-semibold text-slate-700">
+                  ✏️ 빈 항목 채우기 <span className={`ml-1 font-bold ${csvImportPending.duplicateUpdates.length > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{csvImportPending.duplicateUpdates.length}개</span>
+                </p>
+                {csvImportPending.duplicateUpdates.length > 0 && (
+                  <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5">
+                    {csvImportPending.duplicateUpdates.map((u, i) => (
+                      <div key={i} className="text-xs bg-white rounded border border-amber-100 px-2.5 py-1.5">
+                        <span className="font-medium text-slate-700">{u.existing.name} ({u.existing.code})</span>
+                        <span className="text-slate-400 ml-2">
+                          {Object.entries(u.fieldsToFill).map(([f, v]) => `${CSV_FIELD_LABEL[f]}: ${v}`).join(' / ')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 변경 없는 중복 */}
+              {csvImportPending.duplicateCount - csvImportPending.duplicateUpdates.length > 0 && (
+                <div className="rounded-lg p-3 bg-slate-50 border border-slate-200">
+                  <p className="text-sm text-slate-500">
+                    ⏭ 변경 없음 (이미 동일한 데이터) <span className="font-bold">{csvImportPending.duplicateCount - csvImportPending.duplicateUpdates.length}개</span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={() => setCsvImportPending(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">취소</button>
+              <button onClick={applyCSVImport} className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium">
+                확인 ({csvImportPending.newLabels.length + csvImportPending.duplicateUpdates.length}개 적용)
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

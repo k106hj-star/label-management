@@ -677,7 +677,18 @@ export default function App() {
       });
       return [...updated, ...newLabels];
     });
-    addLog({ type: 'csv_import', count: newLabels.length, fileName: file.name, summary: `CSV 가져오기: ${file.name} (신규 ${newLabels.length}개, 업데이트 ${duplicateUpdates.length}개)` });
+    addLog({
+      type: 'csv_import',
+      count: newLabels.length,
+      fileName: file.name,
+      summary: `CSV 가져오기: ${file.name} (신규 ${newLabels.length}개, 업데이트 ${duplicateUpdates.length}개)`,
+      newItems: newLabels.map(l => ({ name: l.name, code: l.code, brand: l.brand, type: l.type, size: l.size })),
+      updatedItems: duplicateUpdates.map(u => ({
+        name: u.existing.name,
+        code: u.existing.code,
+        changes: Object.entries(u.fieldsToFill).map(([f, v]) => ({ field: CSV_FIELD_LABEL[f] || f, after: v, before: u.existing[f] })),
+      })),
+    });
     const csvDoc = {
       id: Date.now() + Math.random(),
       name: file.name, storageName: '', url: '', size: file.size,
@@ -1214,7 +1225,58 @@ export default function App() {
           </div>
         )}
         {log.type === 'csv_import' && log.fileName && (
-          <div className="mt-2 text-xs text-slate-500 pl-1">{log.fileName} ({log.count}개 등록)</div>
+          <div className="mt-2 space-y-2 pl-1">
+            <div className="text-xs text-slate-400">{log.fileName}</div>
+            {log.newItems?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-green-700 mb-1">➕ 신규 등록 {log.newItems.length}개</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-slate-400 border-b border-slate-100">
+                      <th className="text-left pb-1 font-medium pr-3">라벨명</th>
+                      <th className="text-left pb-1 font-medium pr-3">품번</th>
+                      <th className="text-left pb-1 font-medium pr-3">브랜드</th>
+                      <th className="text-left pb-1 font-medium pr-3">종류</th>
+                      <th className="text-left pb-1 font-medium">사이즈</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {log.newItems.map((item, i) => (
+                        <tr key={i}>
+                          <td className="py-1 text-slate-700 pr-3">{item.name}</td>
+                          <td className="py-1 text-slate-500 pr-3">{item.code}</td>
+                          <td className="py-1 text-slate-500 pr-3">{item.brand}</td>
+                          <td className="py-1 text-slate-500 pr-3">{item.type}</td>
+                          <td className="py-1 text-slate-500">{item.size}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {log.updatedItems?.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-amber-700 mb-1">✏️ 업데이트 {log.updatedItems.length}개</p>
+                <div className="space-y-1">
+                  {log.updatedItems.map((item, i) => (
+                    <div key={i} className="text-xs bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                      <span className="font-medium text-slate-700">{item.name} ({item.code})</span>
+                      <div className="mt-0.5 space-y-0.5">
+                        {item.changes.map((ch, j) => (
+                          <div key={j} className="flex items-center gap-1.5">
+                            <span className="text-slate-400 w-14 shrink-0">{ch.field}</span>
+                            <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                            <span className="text-slate-300">→</span>
+                            <span className="text-blue-500 font-medium">{String(ch.after)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
         {log.type === 'image_sync' && (
           <div className="mt-2 text-xs text-slate-500 pl-1">{log.count}개 라벨에 이미지 연결</div>

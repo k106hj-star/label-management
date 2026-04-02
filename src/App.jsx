@@ -1698,11 +1698,7 @@ export default function App() {
                 <label className="block text-xs text-slate-500 mb-1">새 상품 등록</label>
                 <div className="flex gap-2">
                   <select value={newProductBrand} onChange={e => setNewProductBrand(e.target.value)} className="w-20 p-2 border border-slate-300 rounded text-sm bg-white">
-                    <option value="WV">WV</option>
-                    <option value="JM">JM</option>
-                    <option value="EZ">EZ</option>
-                    <option value="FP">FP</option>
-                    <option value="공용">공용</option>
+                    {brandList.filter(b => b !== '전체').map(b => <option key={b} value={b}>{b}</option>)}
                   </select>
                   <input type="text" value={newProductName} onChange={e => setNewProductName(e.target.value)} placeholder="예: 24FW 와이드 팬츠" className="flex-1 p-2 border border-slate-300 rounded text-sm" />
                   <button onClick={addProduct} className="bg-slate-800 text-white px-3 py-2 rounded hover:bg-slate-700"><Plus size={18} /></button>

@@ -1125,7 +1125,7 @@ export default function App() {
   const [calcSearchText, setCalcSearchText] = useState('');
   const [calcSearchOpen, setCalcSearchOpen] = useState(false);
   const calcSearchRef = useRef(null);
-  const [calcColorText, setCalcColorText] = useState('');
+  const [calcColorText, setCalcColorText] = useState('블랙, 그레이');
   const [calcSizeText, setCalcSizeText] = useState('');
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);

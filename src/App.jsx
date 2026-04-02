@@ -505,19 +505,22 @@ export default function App() {
 
   // 브랜드 필터 & 검색 상태
   const [brandFilter, setBrandFilter] = useState('전체');
+  const [vendorFilter, setVendorFilter] = useState('전체');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const fixedBrands = ['WV', 'JM', 'EZ', 'FP', '공용'];
   const dynamicBrands = [...new Set(labels.map(l => l.brand).filter(Boolean))].filter(b => !fixedBrands.includes(b)).sort();
   const brandList = ['전체', ...fixedBrands, ...dynamicBrands];
+  const vendorList = ['전체', ...[...new Set(labels.map(l => l.vendor).filter(Boolean))].sort()];
 
   const executeSearch = () => { setSearchQuery(searchInput); setLabelPage(1); };
 
   const filteredLabels = labels.filter(l => {
     const brandMatch = brandFilter === '전체' || l.brand === brandFilter;
-    if (!searchQuery.trim()) return brandMatch;
+    const vendorMatch = vendorFilter === '전체' || l.vendor === vendorFilter;
+    if (!searchQuery.trim()) return brandMatch && vendorMatch;
     const q = searchQuery.trim().toLowerCase();
-    return brandMatch && (
+    return brandMatch && vendorMatch && (
       l.name.toLowerCase().includes(q) ||
       l.code.toLowerCase().includes(q) ||
       l.type.toLowerCase().includes(q) ||
@@ -1302,6 +1305,21 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* 공급처 필터 */}
+            {vendorList.length > 1 && (
+              <div className="flex items-center gap-2 flex-wrap -mt-3">
+                <span className="text-xs text-slate-400 shrink-0">공급처</span>
+                <div className="flex gap-1 flex-wrap">
+                  {vendorList.map(v => (
+                    <button key={v} onClick={() => { setVendorFilter(v); setLabelPage(1); }}
+                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${vendorFilter === v ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 일괄 액션 바 */}
             {selectedLabelIds.size > 0 && (

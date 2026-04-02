@@ -1129,6 +1129,7 @@ export default function App() {
   const [calcSizeText, setCalcSizeText] = useState('M, L, XL, 2XL');
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
+  const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
   const [calcNote, setCalcNote] = useState('');
@@ -2155,8 +2156,8 @@ export default function App() {
                                   <td className="p-3 text-slate-400 whitespace-nowrap">{todayStr}</td>
                                   <td className="p-3 text-slate-700">{calcOrderer || '-'}</td>
                                   <td className="p-3 text-slate-700">{calcFactory || '-'}</td>
-                                  <td className="p-3">
-                                    <div className="font-medium text-slate-800">{item.name}</div>
+                                  <td className="p-3 cursor-pointer hover:text-indigo-600 group" onClick={() => { const l = labels.find(lb => lb.id === item.id); if (l) setCalcLabelPopup(l); }}>
+                                    <div className="font-medium text-slate-800 group-hover:text-indigo-600 group-hover:underline transition-colors">{item.name}</div>
                                     <div className="text-xs text-slate-400">{item.code}</div>
                                   </td>
                                   <td className="p-3">
@@ -2474,6 +2475,46 @@ export default function App() {
                     </button>
                 }
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 발주 계산기 라벨 상세 팝업 */}
+      {calcLabelPopup && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCalcLabelPopup(null)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">라벨 재고 상세</h3>
+              <button onClick={() => setCalcLabelPopup(null)} className="text-slate-400 hover:text-red-500"><X size={20} /></button>
+            </div>
+            <div className="flex items-center gap-4">
+              {calcLabelPopup.img
+                ? <img src={calcLabelPopup.img} alt="" className="w-16 h-16 rounded-lg object-cover border border-slate-200" />
+                : <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center"><ImageIcon size={22} className="text-slate-300" /></div>
+              }
+              <div>
+                <div className="font-bold text-slate-800 text-sm">{calcLabelPopup.name}</div>
+                <div className="text-xs text-slate-400 mt-0.5">{calcLabelPopup.code}</div>
+                <div className="text-xs text-slate-500 mt-1">{calcLabelPopup.brand} · {calcLabelPopup.type} · {calcLabelPopup.size}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-slate-400 mb-1">현재고</div>
+                <div className={`text-xl font-bold ${calcLabelPopup.stock < 0 ? 'text-red-600' : calcLabelPopup.stock === 0 ? 'text-slate-400' : 'text-blue-600'}`}>{calcLabelPopup.stock?.toLocaleString()}</div>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-slate-400 mb-1">안전재고</div>
+                <div className="text-xl font-bold text-amber-600">{calcLabelPopup.safetyStock > 0 ? calcLabelPopup.safetyStock?.toLocaleString() : '-'}</div>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              {calcLabelPopup.price > 0 && <div className="flex justify-between"><span className="text-slate-400">단가</span><span className="font-medium text-slate-700">{calcLabelPopup.price?.toLocaleString()}원</span></div>}
+              {calcLabelPopup.vendor && <div className="flex justify-between"><span className="text-slate-400">공급처</span><span className="font-medium text-slate-700">{calcLabelPopup.vendor}</span></div>}
+              {Number(calcLabelPopup.safetyStock) > 0 && calcLabelPopup.stock < Number(calcLabelPopup.safetyStock) && (
+                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-600 font-medium text-center">⚠️ 안전재고 미달</div>
+              )}
             </div>
           </div>
         </div>

@@ -751,10 +751,14 @@ export default function App() {
 
   const saveEditProduct = () => {
     if (!editProduct.name) return alert('상품명은 필수입니다.');
+    const original = products.find(p => p.id === editProduct.id);
+    const productFieldLabels = { brand: '브랜드', name: '상품명' };
+    const changes = Object.keys(productFieldLabels).filter(k => original && String(original[k] ?? '') !== String(editProduct[k] ?? '')).map(k => ({ field: productFieldLabels[k], before: original[k], after: editProduct[k] }));
     setProducts(prev => prev.map(p => p.id === editProduct.id ? { ...editProduct } : p));
     if (selectedProduct?.id === editProduct.id) {
       setSelectedProduct(editProduct);
     }
+    if (changes.length > 0) addLog({ type: 'product_edit', productName: editProduct.name, productBrand: editProduct.brand, changes, summary: `상품 수정: ${editProduct.name}` });
     setEditProduct(null);
   };
 
@@ -762,6 +766,7 @@ export default function App() {
     if (!newProductName) return;
     const newProd = { id: Date.now(), brand: newProductBrand, name: newProductName, bom: [] };
     setProducts([...products, newProd]);
+    addLog({ type: 'product_add', productName: newProductName, productBrand: newProductBrand, bomCount: 0, summary: `상품 등록: ${newProductName} (${newProductBrand})` });
     setNewProductBrand('WV');
     setNewProductName('');
     setSelectedProduct(newProd);
@@ -769,7 +774,9 @@ export default function App() {
 
   const deleteProduct = (id) => {
     if (window.confirm('상품을 삭제하시겠습니까?')) {
+      const prod = products.find(p => p.id === id);
       setProducts(products.filter(p => p.id !== id));
+      if (prod) addLog({ type: 'product_delete', productName: prod.name, productBrand: prod.brand, bomCount: prod.bom?.length || 0, summary: `상품 삭제: ${prod.name} (${prod.brand})` });
       if (selectedProduct?.id === id) {
         setSelectedProduct(null);
       }
@@ -778,6 +785,7 @@ export default function App() {
 
   const addLabelToBom = () => {
     if (!selectedProduct || bomSelection.labelIds.length === 0) return;
+    const addedLabelIds = bomSelection.labelIds.map(lid => parseInt(lid)).filter(id => !selectedProduct.bom.find(b => b.labelId === id));
     const updatedProducts = products.map(p => {
       if (p.id === selectedProduct.id) {
         let newBom = [...p.bom];
@@ -793,10 +801,16 @@ export default function App() {
     });
     setProducts(updatedProducts);
     setSelectedProduct(updatedProducts.find(p => p.id === selectedProduct.id));
+    if (addedLabelIds.length > 0) {
+      const addedLabelNames = addedLabelIds.map(id => { const l = labels.find(lb => lb.id === id); return l ? `${l.name} (${l.size || '-'})` : String(id); });
+      addLog({ type: 'bom_add', productName: selectedProduct.name, labelNames: addedLabelNames, qty: parseInt(bomSelection.qty), summary: `BOM 라벨 추가: ${selectedProduct.name} +${addedLabelIds.length}종` });
+    }
     setBomSelection({ ...bomSelection, labelIds: [] });
   };
 
   const removeLabelFromBom = (prodId, labelId) => {
+    const prod = products.find(p => p.id === prodId);
+    const removedLabel = labels.find(l => l.id === labelId);
     const updatedProducts = products.map(p => {
       if (p.id === prodId) {
         return { ...p, bom: p.bom.filter(b => b.labelId !== labelId) };
@@ -804,6 +818,9 @@ export default function App() {
       return p;
     });
     setProducts(updatedProducts);
+    if (prod && removedLabel) {
+      addLog({ type: 'bom_remove', productName: prod.name, labelNames: [`${removedLabel.name} (${removedLabel.size || '-'})`], summary: `BOM 라벨 제거: ${prod.name} - ${removedLabel.name}` });
+    }
     if (selectedProduct && selectedProduct.id === prodId) {
       setSelectedProduct(updatedProducts.find(p => p.id === prodId));
     }
@@ -1157,17 +1174,26 @@ export default function App() {
   };
 
   const logTypeConfig = {
-    deduct:      { border: 'border-orange-200', bg: 'bg-orange-50/40',  badge: 'bg-orange-100 text-orange-700',   label: '📦 발주 확정 (재고 차감)' },
-    restore:     { border: 'border-blue-200',   bg: 'bg-blue-50/40',    badge: 'bg-blue-100 text-blue-700',      label: '↩ 확정 취소 (재고 원복)' },
-    add:         { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',    label: '➕ 라벨 신규 등록' },
-    delete:      { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',        label: '🗑 라벨 삭제' },
-    edit:        { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',  label: '✏️ 라벨 수정' },
-    bulk_delete: { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',        label: '🗑 일괄 삭제' },
-    bulk_edit:   { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',  label: '✏️ 일괄 수정' },
-    csv_import:  { border: 'border-teal-200',   bg: 'bg-teal-50/40',    badge: 'bg-teal-100 text-teal-700',      label: '📄 CSV 가져오기' },
-    safety_stock:{ border: 'border-amber-200',  bg: 'bg-amber-50/40',   badge: 'bg-amber-100 text-amber-700',    label: '🔒 안전재고 변경' },
-    image_update:{ border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',        label: '🖼 이미지 업데이트' },
-    image_sync:  { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',        label: '🔄 이미지 자동 매핑' },
+    deduct:       { border: 'border-orange-200', bg: 'bg-orange-50/40',  badge: 'bg-orange-100 text-orange-700',   label: '📦 발주 확정 (재고 차감)' },
+    restore:      { border: 'border-blue-200',   bg: 'bg-blue-50/40',    badge: 'bg-blue-100 text-blue-700',       label: '↩ 확정 취소 (재고 원복)' },
+    add:          { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',     label: '➕ 라벨 신규 등록' },
+    delete:       { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 라벨 삭제' },
+    edit:         { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 라벨 수정' },
+    bulk_delete:  { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 일괄 삭제' },
+    bulk_edit:    { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 일괄 수정' },
+    csv_import:   { border: 'border-teal-200',   bg: 'bg-teal-50/40',    badge: 'bg-teal-100 text-teal-700',       label: '📄 CSV 가져오기' },
+    safety_stock: { border: 'border-amber-200',  bg: 'bg-amber-50/40',   badge: 'bg-amber-100 text-amber-700',     label: '🔒 안전재고 변경' },
+    image_update: { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',         label: '🖼 이미지 업데이트' },
+    image_sync:   { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',         label: '🔄 이미지 자동 매핑' },
+    order_save:   { border: 'border-emerald-200',bg: 'bg-emerald-50/40', badge: 'bg-emerald-100 text-emerald-700', label: '💾 발주 저장' },
+    order_delete: { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 발주 삭제' },
+    order_delete_all: { border: 'border-red-200',bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 발주 전체 삭제' },
+    order_edit:   { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 발주 수정' },
+    product_add:  { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',     label: '➕ 상품 등록' },
+    product_delete:{ border: 'border-red-200',   bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 상품 삭제' },
+    product_edit: { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 상품 수정' },
+    bom_add:      { border: 'border-indigo-200', bg: 'bg-indigo-50/40',  badge: 'bg-indigo-100 text-indigo-700',   label: '🔗 BOM 라벨 추가' },
+    bom_remove:   { border: 'border-rose-200',   bg: 'bg-rose-50/40',    badge: 'bg-rose-100 text-rose-700',       label: '✂️ BOM 라벨 제거' },
   };
   const renderLogCard = (log) => {
     const c = logTypeConfig[log.type] || { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700', label: log.type };
@@ -1293,6 +1319,54 @@ export default function App() {
         )}
         {log.type === 'image_update' && (
           <div className="mt-2 text-xs text-slate-500 pl-1">{log.labelName} ({log.labelCode})</div>
+        )}
+        {(log.type === 'order_save' || log.type === 'order_delete') && (
+          <div className="mt-2 text-xs text-slate-500 pl-1 space-y-0.5">
+            {log.factory && log.factory !== '-' && <div>공장: <span className="text-slate-700 font-medium">{log.factory}</span></div>}
+            {log.orderer && log.orderer !== '-' && <div>발주자: <span className="text-slate-700 font-medium">{log.orderer}</span></div>}
+            {log.itemCount != null && <div>라벨 종류: <span className="text-slate-700 font-medium">{log.itemCount}종</span></div>}
+            {log.totalCost != null && <div>발주 비용: <span className="text-slate-700 font-medium">{log.totalCost.toLocaleString()}원</span></div>}
+          </div>
+        )}
+        {log.type === 'order_delete_all' && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">{log.count}건 전체 삭제</div>
+        )}
+        {log.type === 'order_edit' && log.changes?.length > 0 && (
+          <div className="mt-2 space-y-1 pl-1">
+            {log.changes.map((ch, i) => (
+              <div key={i} className="text-xs flex items-center gap-2">
+                <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
+                <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                <span className="text-slate-300">→</span>
+                <span className="text-blue-500">{String(ch.after ?? '(없음)')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {(log.type === 'product_add' || log.type === 'product_delete') && (
+          <div className="mt-2 text-xs text-slate-500 pl-1">
+            {log.productBrand && <span className="mr-2">브랜드: <span className="text-slate-700 font-medium">{log.productBrand}</span></span>}
+            {log.bomCount != null && <span>BOM: <span className="text-slate-700 font-medium">{log.bomCount}종</span></span>}
+          </div>
+        )}
+        {log.type === 'product_edit' && log.changes?.length > 0 && (
+          <div className="mt-2 space-y-1 pl-1">
+            {log.changes.map((ch, i) => (
+              <div key={i} className="text-xs flex items-center gap-2">
+                <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
+                <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                <span className="text-slate-300">→</span>
+                <span className="text-blue-500">{String(ch.after ?? '(없음)')}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {(log.type === 'bom_add' || log.type === 'bom_remove') && (
+          <div className="mt-2 text-xs text-slate-500 pl-1 space-y-0.5">
+            <div>상품: <span className="text-slate-700 font-medium">{log.productName}</span></div>
+            {log.labelNames?.length > 0 && <div>라벨: {log.labelNames.map((n, i) => <span key={i} className="inline-block bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 mr-1 mb-0.5">{n}</span>)}</div>}
+            {log.qty != null && <div>수량/단위: <span className="text-slate-700 font-medium">{log.qty}개</span></div>}
+          </div>
         )}
       </div>
     );
@@ -2130,6 +2204,7 @@ export default function App() {
                         details: calcResult.details,
                       };
                       setSavedOrders(prev => [order, ...prev]);
+                      addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });
                       alert('발주 내용이 저장되었습니다!');
                     }}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
@@ -2153,7 +2228,7 @@ export default function App() {
               <span className="text-sm font-normal text-slate-400">({savedOrders.length}건)</span>
             </h2>
             {savedOrders.length > 0 && (
-              <button onClick={() => { if (window.confirm('저장리스트를 전체 삭제할까요?')) setSavedOrders([]); }} className="text-sm text-red-400 hover:text-red-600 font-medium">전체 삭제</button>
+              <button onClick={() => { if (window.confirm('저장리스트를 전체 삭제할까요?')) { addLog({ type: 'order_delete_all', count: savedOrders.length, summary: `발주 저장리스트 전체 삭제 (${savedOrders.length}건)` }); setSavedOrders([]); } }} className="text-sm text-red-400 hover:text-red-600 font-medium">전체 삭제</button>
             )}
           </div>
 
@@ -2212,7 +2287,7 @@ export default function App() {
                                 <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', mfgDate: order.mfgDate || '', rnNumber: order.rnNumber || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                   <Pencil size={14} /> 수정
                                 </button>
-                                <button onClick={() => { setOpenOrderMenuId(null); setSavedOrders(prev => prev.filter((_, i) => i !== idx)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
+                                <button onClick={() => { setOpenOrderMenuId(null); addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` }); setSavedOrders(prev => prev.filter((_, i) => i !== idx)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
                                   <Trash2 size={14} /> 삭제
                                 </button>
                               </div>
@@ -2255,6 +2330,12 @@ export default function App() {
                       const newDetails = (viewOrderEdits.details || viewOrder.details || []).map(({ _globalIdx, ...rest }) => rest);
                       const newTotalCost = newDetails.reduce((s, d) => s + (d.shortage > 0 ? (d.cost || 0) : 0), 0);
                       const updated = { ...viewOrder, orderer: viewOrderEdits.orderer, factory: viewOrderEdits.factory, note: viewOrderEdits.note, mfgDate: viewOrderEdits.mfgDate, rnNumber: viewOrderEdits.rnNumber, details: newDetails, totalCost: newTotalCost };
+                      const orderEditFieldLabels = { orderer: '발주자', factory: '공장', note: '특이사항', mfgDate: '제조년월', rnNumber: 'RN넘버' };
+                      const orderChanges = Object.keys(orderEditFieldLabels).filter(k => String(viewOrder[k] ?? '') !== String(viewOrderEdits[k] ?? '')).map(k => ({ field: orderEditFieldLabels[k], before: viewOrder[k], after: viewOrderEdits[k] }));
+                      const oldDetails = (viewOrder.details || []);
+                      const newDetailsCmp = newDetails;
+                      newDetailsCmp.forEach((d, i) => { if (oldDetails[i] && oldDetails[i].shortage !== d.shortage) orderChanges.push({ field: `${d.name}(${d.size}) 발주수량`, before: oldDetails[i].shortage, after: d.shortage }); });
+                      if (orderChanges.length > 0) addLog({ type: 'order_edit', productName: viewOrder.productName || '(미선택)', changes: orderChanges, summary: `발주 수정: ${viewOrder.productName || '(미선택)'}` });
                       setSavedOrders(prev => prev.map((o, i) => i === viewOrderEdits._idx ? updated : o));
                       setViewOrder(updated);
                       setViewOrderEditMode(false);

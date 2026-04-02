@@ -1777,7 +1777,7 @@ export default function App() {
                       추가 {bomSelection.labelIds.length > 0 && `(${bomSelection.labelIds.length})`}
                     </button>
                     </div>
-                    <div className="max-h-48 overflow-y-auto border border-slate-200 rounded bg-white">
+                    <div className="max-h-96 overflow-y-auto border border-slate-200 rounded bg-white">
                       {labels.filter(l => {
                         if (bomBrandFilter === 'all') return true;
                         const brand = bomBrandFilter === 'auto' ? selectedProduct.brand : bomBrandFilter;

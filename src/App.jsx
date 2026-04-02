@@ -619,7 +619,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const CSV_FILL_FIELDS = ['brand', 'type', 'size', 'stock', 'safetyStock', 'price', 'vendor'];
+  const CSV_FILL_FIELDS = ['brand', 'type', 'size', 'stock', 'price', 'vendor'];
   const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
 
   const handleCSVUpload = (e) => {
@@ -1334,7 +1334,7 @@ export default function App() {
         {activeTab === 'inventory' && (
           <>
           {(() => {
-            const lowStockLabels = labels.filter(l => (l.safetyStock || 0) > 0 && l.stock < l.safetyStock);
+            const lowStockLabels = labels.filter(l => Number(l.safetyStock) > 0 && l.stock < Number(l.safetyStock));
             if (lowStockLabels.length === 0) return null;
             return (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">

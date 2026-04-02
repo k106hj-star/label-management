@@ -1126,7 +1126,7 @@ export default function App() {
   const [calcSearchOpen, setCalcSearchOpen] = useState(false);
   const calcSearchRef = useRef(null);
   const [calcColorText, setCalcColorText] = useState('블랙, 그레이');
-  const [calcSizeText, setCalcSizeText] = useState('');
+  const [calcSizeText, setCalcSizeText] = useState('M, L, XL, 2XL');
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
   const [calcFactory, setCalcFactory] = useState('');

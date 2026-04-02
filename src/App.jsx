@@ -619,7 +619,9 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const CSV_FILL_FIELDS = ['brand', 'type', 'size', 'stock', 'price', 'vendor'];
+  // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
+  const CSV_ALWAYS_UPDATE = ['stock'];
+  const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor'];
   const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
 
   const handleCSVUpload = (e) => {
@@ -644,7 +646,14 @@ export default function App() {
           newLabels.push({ ...p, id: Date.now() + idx });
         } else {
           const fieldsToFill = {};
-          CSV_FILL_FIELDS.forEach(field => {
+          // 현재고: CSV 값이 현재와 다르면 항상 업데이트
+          CSV_ALWAYS_UPDATE.forEach(field => {
+            if (p[field] !== undefined && p[field] !== existing[field]) {
+              fieldsToFill[field] = p[field];
+            }
+          });
+          // 나머지: 기존이 비어있을 때만 채우기
+          CSV_FILL_EMPTY.forEach(field => {
             if (isEmpty(existing[field]) && !isEmpty(p[field])) {
               fieldsToFill[field] = p[field];
             }

@@ -853,6 +853,7 @@ export default function App() {
   const [viewOrderEditMode, setViewOrderEditMode] = useState(false);
   const [viewOrderEdits, setViewOrderEdits] = useState({});
   const [openOrderMenuId, setOpenOrderMenuId] = useState(null);
+  const [orderMenuPos, setOrderMenuPos] = useState({ top: 0, left: 0 });
 
   const applyOrderToStock = (order) => {
     if (order.applied) {
@@ -2200,14 +2201,14 @@ export default function App() {
                             : <button onClick={() => applyOrderToStock(order)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium px-3 py-1 rounded-lg transition-colors">발주 확정</button>
                           }
                         </td>
-                        <td className="p-3 text-center relative">
-                          <button onClick={() => setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id)} className="text-slate-400 hover:text-slate-600 p-1">
+                        <td className="p-3 text-center">
+                          <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setOrderMenuPos({ top: r.bottom, left: r.right - 112 }); setOpenOrderMenuId(openOrderMenuId === order.id ? null : order.id); }} className="text-slate-400 hover:text-slate-600 p-1">
                             <MoreVertical size={16} />
                           </button>
                           {openOrderMenuId === order.id && (
                             <>
                               <div className="fixed inset-0 z-20" onClick={() => setOpenOrderMenuId(null)} />
-                              <div className="absolute right-0 top-10 z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28">
+                              <div style={{ position: 'fixed', top: orderMenuPos.top, left: orderMenuPos.left }} className="z-30 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-28">
                                 <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', mfgDate: order.mfgDate || '', rnNumber: order.rnNumber || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                   <Pencil size={14} /> 수정
                                 </button>

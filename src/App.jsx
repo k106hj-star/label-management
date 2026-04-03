@@ -1468,8 +1468,9 @@ export default function App() {
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                             {items.map(l => (
-                              <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100">
-                                <span className="font-medium text-slate-700">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
+                              <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100 cursor-pointer hover:bg-red-50 transition-colors"
+                                onClick={() => { setActiveTab('inventory'); setSearchInput(l.name); setSearchQuery(l.name); setLabelPage(1); setBrandFilter('전체'); setVendorFilter('전체'); }}>
+                                <span className="font-medium text-slate-700 hover:text-red-600 hover:underline">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
                                 <span className="text-red-600 font-bold ml-2">{l.stock} / {l.safetyStock}</span>
                               </div>
                             ))}

@@ -333,7 +333,7 @@ const DATA_VERSION = 2;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('inventory');
-  const [lowStockExpanded, setLowStockExpanded] = useState(true);
+  const [lowStockExpanded, setLowStockExpanded] = useState(false);
   const [navExpanded, setNavExpanded] = useState(true);
   const [labelPage, setLabelPage] = useState(1);
   const [labelPageSize, setLabelPageSize] = useState(30);

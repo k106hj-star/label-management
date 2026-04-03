@@ -2210,6 +2210,14 @@ export default function App() {
                                   <td className="p-3 cursor-pointer hover:text-indigo-600 group" onClick={() => { const l = labels.find(lb => lb.id === item.id); if (l) setCalcLabelPopup(l); }}>
                                     <div className="font-medium text-slate-800 group-hover:text-indigo-600 group-hover:underline transition-colors">{item.name}</div>
                                     <div className="text-xs text-slate-400">{item.code}</div>
+                                    {item.type === '케어라벨' && (
+                                      <div className="mt-1 space-y-0.5">
+                                        {item.careInfo?.code && <div className="text-xs text-amber-700">품번: <span className="font-medium">{item.careInfo.code}</span></div>}
+                                        {item.careInfo?.material && <div className="text-xs text-amber-700">소재: <span className="font-medium">{item.careInfo.material}</span></div>}
+                                        {calcMfgDate && <div className="text-xs text-amber-700">제조년월: <span className="font-medium">{calcMfgDate}</span></div>}
+                                        {calcRnNumber && <div className="text-xs text-amber-700">RN#: <span className="font-medium">{calcRnNumber}</span></div>}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="p-3">
                                     {item.img

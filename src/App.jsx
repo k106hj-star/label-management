@@ -1138,6 +1138,8 @@ export default function App() {
   const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
   const [calcRnNumber, setCalcRnNumber] = useState('');
   const [calcDaebongQty, setCalcDaebongQty] = useState('');
+  const [calcDaebongType, setCalcDaebongType] = useState('');
+  const DAEBONG_RATIO = { '반팔': 50, '후드': 20, '아우터': 15, '바지': 50 };
   const [calcRnMode, setCalcRnMode] = useState('select');
   const RN_LIST = [
     { rn: 'RN#1487', factory: '성진' }, { rn: 'RN#1633', factory: '동원' }, { rn: 'RN#2527', factory: 'JB(2DAY텍스)' },
@@ -1177,16 +1179,17 @@ export default function App() {
     const product = products.find(p => p.id === parseInt(calcTarget));
     if (!product) return;
     let totalCost = 0;
-    const daebongQty = parseInt(calcDaebongQty) || 0;
+    const daebongRatio = calcDaebongType ? DAEBONG_RATIO[calcDaebongType] : 0;
+    const daebongCalcQty = daebongRatio > 0 ? Math.ceil(totalQty / daebongRatio) : 0;
     const details = product.bom.map(item => {
       const label = labels.find(l => l.id === item.labelId);
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
-      const totalNeed = isDaebong && daebongQty > 0 ? daebongQty : item.qtyPerUnit * totalQty;
+      const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * totalQty;
       const shortage = Math.max(0, totalNeed - label.stock);
       const cost = shortage * label.price;
       totalCost += cost;
-      return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost, _daebongOverride: isDaebong && daebongQty > 0 };
+      return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost };
     }).filter(Boolean);
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
@@ -2166,15 +2169,25 @@ export default function App() {
                 </button>
                 <div className="flex items-center gap-2 bg-white border border-emerald-200 rounded-lg px-3 py-2 shadow-sm shrink-0">
                   <label className="text-xs font-bold text-slate-600 whitespace-nowrap">대봉스티커</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={calcDaebongQty}
-                    onChange={e => setCalcDaebongQty(e.target.value)}
-                    placeholder="수량"
-                    className="w-20 p-1.5 border border-slate-200 rounded text-sm text-right focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                  />
-                  <span className="text-xs text-slate-400">개</span>
+                  <select
+                    value={calcDaebongType}
+                    onChange={e => setCalcDaebongType(e.target.value)}
+                    className="p-1.5 border border-slate-200 rounded text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400 bg-white"
+                  >
+                    <option value="">종류 선택</option>
+                    {Object.keys(DAEBONG_RATIO).map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  {calcDaebongType && (() => {
+                    const totalQty = getAllCalcRows().reduce((s, r) => s + r.qty, 0);
+                    const ratio = DAEBONG_RATIO[calcDaebongType];
+                    const needed = totalQty > 0 ? Math.ceil(totalQty / ratio) : 0;
+                    return (
+                      <span className="text-xs text-slate-500 whitespace-nowrap">
+                        = <span className="font-bold text-emerald-700 text-sm">{needed}</span>장
+                        <span className="text-slate-300 ml-1">({totalQty}개÷{ratio})</span>
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

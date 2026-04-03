@@ -1503,13 +1503,13 @@ export default function App() {
                 <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
                   {brandList.map(b => <option key={b} value={b}>{b === '전체' ? '브랜드 전체' : b}</option>)}
                 </select>
-                {/* 공급처 필터 */}
-                <select value={vendorFilter} onChange={e => { setVendorFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                  {vendorList.map(v => <option key={v} value={v}>{v === '전체' ? '공급처 전체' : v}</option>)}
-                </select>
                 {/* 종류 필터 */}
                 <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
                   {typeList.map(t => <option key={t} value={t}>{t === '전체' ? '종류 전체' : t}</option>)}
+                </select>
+                {/* 공급처 필터 */}
+                <select value={vendorFilter} onChange={e => { setVendorFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {vendorList.map(v => <option key={v} value={v}>{v === '전체' ? '공급처 전체' : v}</option>)}
                 </select>
                 {/* 신규 라벨 추가 버튼 */}
                 <button onClick={() => setShowAddLabelModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">

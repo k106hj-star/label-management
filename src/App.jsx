@@ -1211,10 +1211,12 @@ export default function App() {
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
 
-  // ── PDF 발주서 생성 (미리보기 팝업용) ───────────────────────────────────
+  // ── PDF 발주서 생성 — html2canvas 방식 (한글 완벽 지원) ─────────────────
   const generateOrderPDF = async (resultDetails, vendorName = null) => {
     setPdfLoading(true);
     try {
+      const { default: html2canvas } = await import('html2canvas');
+
       const todayStr = (() => {
         const d = new Date();
         return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
@@ -1230,39 +1232,37 @@ export default function App() {
         }
       });
 
-      // 이미지 → base64 변환
+      // 이미지 → base64
       const loadImageBase64 = (url) => new Promise((resolve) => {
         if (!url) return resolve(null);
         const img = new window.Image();
         img.crossOrigin = 'Anonymous';
         img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-          canvas.getContext('2d').drawImage(img, 0, 0);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
+          const c = document.createElement('canvas');
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext('2d').drawImage(img, 0, 0);
+          resolve(c.toDataURL('image/jpeg', 0.85));
         };
         img.onerror = () => resolve(null);
         img.src = url;
       });
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      doc.setFont('helvetica');
-
-      const COL_WIDTHS = [18, 16, 20, 38, 22, 22, 52, 12, 18, 30];
-      const HEADERS = ['\uc791\uc131\uc77c','\ubc1c\uc8fc\uc790','\uc785\uace0\uc785\ucc98','\ub77c\ubca8\uba85','Style No','\uc774\ubbf8\uc9c0','\uc0c1\ud488\uba85','size','\uc218\ub7c9','\ube44\uace0'];
+      const PAGE_W = doc.internal.pageSize.width;   // 297mm
+      const PAGE_H = doc.internal.pageSize.height;  // 210mm
+      const MARGIN = 8;
 
       let isFirstPage = true;
 
       for (const [vendor, items] of Object.entries(groups)) {
-        if (!isFirstPage) doc.addPage();
-        isFirstPage = false;
+        // ── 이미지 프리로드 ──
+        const imgCache = {};
+        for (const item of items) {
+          const key = item.name + '||' + (item.code || '');
+          if (item.img && !imgCache[key]) imgCache[key] = await loadImageBase64(item.img);
+        }
 
-        // 제목
-        doc.setFontSize(20);
-        doc.setTextColor(30, 30, 30);
-        doc.text(`${vendor} \uBC1C\uC8FC\uC11C`, doc.internal.pageSize.width / 2, 18, { align: 'center' });
-
-        // 라벨명 기준으로 그룹화 (같은 이름 = 같은 라벨, 이미지 공유)
+        // ── 라벨명 기준 그룹 ──
         const nameGroupMap = new Map();
         items.forEach(item => {
           const key = item.name + '||' + (item.code || '');
@@ -1270,118 +1270,124 @@ export default function App() {
           nameGroupMap.get(key).push(item);
         });
 
-        // 이미지 프리로드
-        const imgCache = {};
-        for (const item of items) {
-          const key = item.name + '||' + (item.code || '');
-          if (item.img && !imgCache[key]) {
-            imgCache[key] = await loadImageBase64(item.img);
-          }
-        }
+        // ── HTML 테이블 구성 ──
+        const cellStyle = `border:1px solid #ccc; padding:6px 8px; vertical-align:middle; font-size:11px; word-break:break-word;`;
+        const centerCell = cellStyle + 'text-align:center;';
 
-        // autoTable body 구성 (rowSpan 적용)
-        const tableBody = [];
-        const rowImageMap = {}; // bodyRowIndex → base64
-
+        let tbodyHtml = '';
         for (const [key, groupItems] of nameGroupMap.entries()) {
           const n = groupItems.length;
           const first = groupItems[0];
-          const isCare = first.type === '\ucF00\uc5B4\ub77c\ubca8';
+          const isCare = first.type === '케어라벨';
           const imgB64 = imgCache[key] || null;
+          const rowBg = isCare ? 'background:#ffff00;' : '';
 
-          // 라벨명 (케어라벨이면 추가 정보 포함)
-          let labelContent = first.name;
+          let labelHtml = `<strong>${first.name}</strong>`;
           if (isCare) {
             const parts = [];
-            if (first.careInfo?.code)     parts.push(`\ud488\ubc88: ${first.careInfo.code}`);
-            if (first.careInfo?.material) parts.push(`\uc18c\uc7ac: ${first.careInfo.material}`);
-            if (calcMfgDate)              parts.push(`\uc81c\uc870\ub144\uc6d4: ${calcMfgDate}`);
+            if (first.careInfo?.code)     parts.push(`품번: ${first.careInfo.code}`);
+            if (first.careInfo?.material) parts.push(`소재: ${first.careInfo.material}`);
+            if (calcMfgDate)              parts.push(`제조년월: ${calcMfgDate}`);
             if (calcRnNumber)             parts.push(`RN#: ${calcRnNumber}`);
-            if (parts.length) labelContent += '\n' + parts.join('\n');
+            if (parts.length) labelHtml += '<br><span style="font-size:10px">' + parts.join('<br>') + '</span>';
           }
 
-          const careStyle  = isCare ? { fillColor: [255, 255, 0], textColor: [60, 60, 0] } : {};
-          const baseStyle  = (extra = {}) => ({ fontSize: 7, valign: 'middle', ...careStyle, ...extra });
-
-          // 첫 행에서 이미지 기록
-          const firstRowIdx = tableBody.length;
-          if (imgB64) rowImageMap[firstRowIdx] = imgB64;
+          const imgHtml = imgB64
+            ? `<img src="${imgB64}" style="max-width:60px;max-height:60px;object-fit:contain;display:block;margin:auto"/>`
+            : '';
 
           groupItems.forEach((item, idx) => {
             const qty = item.shortage > 0 ? item.shortage : item.needQty;
-            const sizeStr = item.size || 'FR';
-            const qtyStr  = qty.toLocaleString() + '\uac1c';
-
             if (idx === 0) {
-              // 첫 행 — 공통 셀에 rowSpan 적용
-              tableBody.push([
-                { content: todayStr,             rowSpan: n, styles: baseStyle({ halign: 'center' }) },
-                { content: calcOrderer || '-',   rowSpan: n, styles: baseStyle({ halign: 'center' }) },
-                { content: calcFactory || '-',   rowSpan: n, styles: baseStyle({ halign: 'center' }) },
-                { content: labelContent,         rowSpan: n, styles: baseStyle() },
-                { content: first.code || '-',    rowSpan: n, styles: baseStyle({ halign: 'center' }) },
-                { content: '',                   rowSpan: n, styles: { ...careStyle } }, // 이미지 (didDrawCell)
-                { content: calcSearchText || '-',rowSpan: n, styles: baseStyle() },
-                { content: sizeStr,                          styles: baseStyle({ halign: 'center' }) },
-                { content: qtyStr,                           styles: baseStyle({ halign: 'center', fontStyle: 'bold' }) },
-                { content: calcNote || '',       rowSpan: n, styles: baseStyle() },
-              ]);
+              tbodyHtml += `<tr style="${rowBg}">
+                <td rowspan="${n}" style="${centerCell}">${todayStr}</td>
+                <td rowspan="${n}" style="${centerCell}">${calcOrderer || '-'}</td>
+                <td rowspan="${n}" style="${centerCell}">${calcFactory || '-'}</td>
+                <td rowspan="${n}" style="${cellStyle}">${labelHtml}</td>
+                <td rowspan="${n}" style="${centerCell}">${first.code || '-'}</td>
+                <td rowspan="${n}" style="${centerCell}padding:4px;">${imgHtml}</td>
+                <td rowspan="${n}" style="${cellStyle}font-size:10px;">${calcSearchText || '-'}</td>
+                <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
+                <td style="${centerCell}font-weight:bold;">${qty.toLocaleString()}개</td>
+                <td rowspan="${n}" style="${cellStyle}${isCare ? 'background:#ffff00;' : ''}">${calcNote || ''}</td>
+              </tr>`;
             } else {
-              // 이후 행 — size, qty만 (rowSpan된 컬럼 생략)
-              tableBody.push([
-                { content: sizeStr, styles: baseStyle({ halign: 'center' }) },
-                { content: qtyStr,  styles: baseStyle({ halign: 'center', fontStyle: 'bold' }) },
-              ]);
+              tbodyHtml += `<tr style="${rowBg}">
+                <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
+                <td style="${centerCell}font-weight:bold;">${qty.toLocaleString()}개</td>
+              </tr>`;
             }
           });
         }
 
-        autoTable(doc, {
-          startY: 24,
-          head: [HEADERS],
-          body: tableBody,
-          columnStyles: {
-            0: { cellWidth: COL_WIDTHS[0] },
-            1: { cellWidth: COL_WIDTHS[1] },
-            2: { cellWidth: COL_WIDTHS[2] },
-            3: { cellWidth: COL_WIDTHS[3] },
-            4: { cellWidth: COL_WIDTHS[4] },
-            5: { cellWidth: COL_WIDTHS[5] },
-            6: { cellWidth: COL_WIDTHS[6] },
-            7: { cellWidth: COL_WIDTHS[7] },
-            8: { cellWidth: COL_WIDTHS[8] },
-            9: { cellWidth: COL_WIDTHS[9] },
-          },
-          headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
-          bodyStyles: { minCellHeight: 20, valign: 'middle' },
-          alternateRowStyles: { fillColor: false }, // rowSpan 그룹 혼란 방지
-          didDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index === 5) {
-              const b64 = rowImageMap[data.row.index];
-              if (b64) {
-                const pad = 2;
-                try {
-                  doc.addImage(b64, 'JPEG',
-                    data.cell.x + pad, data.cell.y + pad,
-                    data.cell.width - pad * 2, data.cell.height - pad * 2,
-                    '', 'FAST'
-                  );
-                } catch(e) {}
-              }
-            }
-          },
-          margin: { left: 8, right: 8 },
-          tableWidth: 'auto',
+        const html = `<div style="font-family:'맑은 고딕','Malgun Gothic','Apple SD Gothic Neo','나눔고딕',sans-serif;background:white;padding:16px;width:1100px;">
+          <h2 style="text-align:center;font-size:22px;margin:0 0 12px;font-weight:bold;">${vendor} 발주서</h2>
+          <table style="border-collapse:collapse;width:100%;table-layout:fixed;">
+            <colgroup>
+              <col style="width:70px"/><col style="width:60px"/><col style="width:70px"/>
+              <col style="width:140px"/><col style="width:85px"/><col style="width:80px"/>
+              <col style="width:200px"/><col style="width:45px"/><col style="width:65px"/>
+              <col style="width:115px"/>
+            </colgroup>
+            <thead>
+              <tr style="background:#333;color:white;font-size:12px;">
+                <th style="padding:8px;text-align:center;border:1px solid #555;">작성일</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">발주자</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">입고처</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">라벨명</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">Style No</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">이미지</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">상품명</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">size</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">수량</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">비고</th>
+              </tr>
+            </thead>
+            <tbody>${tbodyHtml}</tbody>
+          </table>
+        </div>`;
+
+        // DOM에 임시 삽입 후 캡처
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = 'position:fixed;top:-99999px;left:-99999px;z-index:-1;';
+        wrapper.innerHTML = html;
+        document.body.appendChild(wrapper);
+
+        const canvas = await html2canvas(wrapper.firstChild, {
+          scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
         });
+        document.body.removeChild(wrapper);
+
+        // ── 캔버스를 페이지 높이 단위로 잘라서 PDF에 추가 ──
+        const contentW = PAGE_W - MARGIN * 2;
+        const contentH = PAGE_H - MARGIN * 2;
+        const pxPerMm = canvas.width / contentW;
+        const pageCanvasPx = contentH * pxPerMm;
+        let yPx = 0;
+
+        while (yPx < canvas.height) {
+          if (!isFirstPage) doc.addPage();
+          isFirstPage = false;
+
+          const sliceH = Math.min(pageCanvasPx, canvas.height - yPx);
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = sliceH;
+          sliceCanvas.getContext('2d').drawImage(canvas, 0, -yPx);
+
+          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+          const displayH = sliceH / pxPerMm;
+          doc.addImage(sliceData, 'JPEG', MARGIN, MARGIN, contentW, displayH);
+          yPx += pageCanvasPx;
+        }
       }
 
-      // blob URL → 미리보기 팝업
       const vendorLabel = vendorName || Object.keys(groups).join('_');
-      const filename = `${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`;
+      const filename = `${vendorLabel}_발주서_${todayStr}.pdf`;
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       setPdfPreview({ url, filename });
-    } catch(e) { alert('PDF 생성 중 오류가 발생했습니다.'); console.error(e); }
+    } catch(e) { alert('PDF 생성 중 오류가 발생했습니다: ' + e.message); console.error(e); }
     finally { setPdfLoading(false); }
   };
 

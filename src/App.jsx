@@ -964,6 +964,8 @@ export default function App() {
 
   // --- 재고 변동 로그 ---
   const [logSearch, setLogSearch] = useState('');
+  const [expandedLogs, setExpandedLogs] = useState(new Set());
+  const toggleLog = (id) => setExpandedLogs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [stockLogs, setStockLogs] = useState(() => {
     const saved = localStorage.getItem('label_stock_logs');
     return saved ? JSON.parse(saved) : [];
@@ -1394,16 +1396,47 @@ export default function App() {
   };
   const renderLogCard = (log) => {
     const c = logTypeConfig[log.type] || { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700', label: log.type };
+    const isOpen = expandedLogs.has(log.id);
+    // 상세 내용이 있는 타입인지 판단
+    const hasDetail = (
+      ((log.type === 'deduct' || log.type === 'restore') && log.items?.length > 0) ||
+      (log.type === 'edit' && log.changes?.length > 0) ||
+      (log.type === 'bulk_delete' && log.labelNames?.length > 0) ||
+      (log.type === 'bulk_edit' && log.fields) ||
+      log.type === 'safety_stock' ||
+      (log.type === 'csv_import' && log.fileName) ||
+      log.type === 'image_sync' ||
+      log.type === 'image_update' ||
+      (log.type === 'order_save' || log.type === 'order_delete') ||
+      log.type === 'order_delete_all' ||
+      (log.type === 'order_edit' && log.changes?.length > 0) ||
+      (log.type === 'product_add' || log.type === 'product_delete') ||
+      (log.type === 'product_edit' && log.changes?.length > 0) ||
+      (log.type === 'bom_add' || log.type === 'bom_remove')
+    );
     return (
-      <div key={log.id} className={`rounded-xl border p-4 ${c.border} ${c.bg}`}>
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+      <div key={log.id} className={`rounded-xl border ${c.border} ${c.bg} overflow-hidden`}>
+        {/* 아코디언 헤더 */}
+        <div
+          className={`flex items-center justify-between px-4 py-3 flex-wrap gap-2 ${hasDetail ? 'cursor-pointer hover:brightness-95 transition-all select-none' : ''}`}
+          onClick={() => hasDetail && toggleLog(log.id)}
+        >
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.badge}`}>{c.label}</span>
             <span className="text-sm font-semibold text-slate-700">{log.summary || log.productName || log.labelName}</span>
             {log.factory && log.factory !== '-' && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>}
           </div>
-          <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
+            {hasDetail && (
+              <span className="text-slate-400 transition-transform duration-200" style={{ display:'inline-block', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                ▼
+              </span>
+            )}
+          </div>
         </div>
+        {/* 아코디언 바디 — 펼쳤을 때만 표시 */}
+        {isOpen && <div className="px-4 pb-4 border-t border-white/60">
         {(log.type === 'deduct' || log.type === 'restore') && log.items?.length > 0 && (
           <div className="overflow-x-auto mt-1">
             <table className="w-full text-xs">
@@ -1565,6 +1598,7 @@ export default function App() {
             {log.qty != null && <div>수량/단위: <span className="text-slate-700 font-medium">{log.qty}개</span></div>}
           </div>
         )}
+        </div>}
       </div>
     );
   };

@@ -1138,6 +1138,8 @@ export default function App() {
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
+  const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
+  const [pdfLoading, setPdfLoading] = useState(false);
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
   const [calcOrdererMode, setCalcOrdererMode] = useState('select');
@@ -1203,8 +1205,10 @@ export default function App() {
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
 
-  // ── PDF 발주서 생성 ──────────────────────────────────────────────────
+  // ── PDF 발주서 생성 (미리보기 팝업용) ───────────────────────────────────
   const generateOrderPDF = async (resultDetails, vendorName = null) => {
+    setPdfLoading(true);
+    try {
     const todayStr = (() => {
       const d = new Date();
       return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
@@ -1356,9 +1360,14 @@ export default function App() {
       });
     }
 
-    // 파일명: 공급처_발주서_날짜.pdf
+    // blob URL로 변환 → 미리보기 팝업에 표시
     const vendorLabel = vendorName || Object.keys(groups).join('_');
-    doc.save(`${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`);
+    const filename = `${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`;
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    setPdfPreview({ url, filename });
+    } catch(e) { alert('PDF 생성 중 오류가 발생했습니다.'); console.error(e); }
+    finally { setPdfLoading(false); }
   };
 
   const logTypeConfig = {
@@ -2481,9 +2490,10 @@ export default function App() {
                         <button
                           key={v}
                           onClick={() => generateOrderPDF(calcResult.details, v)}
-                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                          disabled={pdfLoading}
+                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
                         >
-                          <FileDown size={16} /> {v} 발주서 PDF
+                          <FileDown size={16} /> {pdfLoading ? '생성 중...' : `${v} 발주서 PDF`}
                         </button>
                       ));
                     })()}
@@ -2492,9 +2502,10 @@ export default function App() {
                       return vendors.length > 1 ? (
                         <button
                           onClick={() => generateOrderPDF(calcResult.details)}
-                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                          disabled={pdfLoading}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
                         >
-                          <FileDown size={16} /> 전체 PDF
+                          <FileDown size={16} /> {pdfLoading ? '생성 중...' : '전체 PDF'}
                         </button>
                       ) : null;
                     })()}
@@ -2809,6 +2820,38 @@ export default function App() {
                 }
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF 발주서 미리보기 팝업 */}
+      {pdfPreview && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }}>
+          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', height: '90vh' }} onClick={e => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 shrink-0">
+              <div className="flex items-center gap-2">
+                <FileDown size={18} className="text-blue-600" />
+                <span className="font-bold text-slate-800 text-sm">{pdfPreview.filename}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={pdfPreview.url}
+                  download={pdfPreview.filename}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors"
+                >
+                  <Download size={15} /> 다운로드
+                </a>
+                <button onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }} className="text-slate-400 hover:text-red-500 p-1"><X size={20} /></button>
+              </div>
+            </div>
+            {/* PDF 미리보기 */}
+            <iframe
+              src={pdfPreview.url}
+              className="flex-1 w-full rounded-b-xl"
+              title="PDF 미리보기"
+              style={{ border: 'none' }}
+            />
           </div>
         </div>
       )}

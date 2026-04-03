@@ -1451,16 +1451,34 @@ export default function App() {
                     {lowStockExpanded ? '▲ 숨기기' : '▼ 펼치기'}
                   </button>
                 </div>
-                {lowStockExpanded && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
-                    {lowStockLabels.map(l => (
-                      <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100">
-                        <span className="font-medium text-slate-700">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
-                        <span className="text-red-600 font-bold ml-2">{l.stock} / {l.safetyStock}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {lowStockExpanded && (() => {
+                  const vendorGroups = {};
+                  lowStockLabels.forEach(l => {
+                    const v = l.vendor || '(공급처 미입력)';
+                    if (!vendorGroups[v]) vendorGroups[v] = [];
+                    vendorGroups[v].push(l);
+                  });
+                  return (
+                    <div className="mt-3 space-y-3">
+                      {Object.entries(vendorGroups).sort(([a],[b]) => a.localeCompare(b)).map(([vendor, items]) => (
+                        <div key={vendor}>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">{vendor}</span>
+                            <span className="text-xs text-red-400">{items.length}건</span>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {items.map(l => (
+                              <div key={l.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 text-sm border border-red-100">
+                                <span className="font-medium text-slate-700">[{l.brand}] {l.name} <span className="text-slate-400">({l.size})</span></span>
+                                <span className="text-red-600 font-bold ml-2">{l.stock} / {l.safetyStock}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}

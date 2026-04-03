@@ -1132,6 +1132,8 @@ export default function App() {
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
+  const [calcOrdererMode, setCalcOrdererMode] = useState('select');
+  const ORDERER_LIST = ['천영균', '이형주', '장경환', '선호준', '양동준'];
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`; });
   const [calcRnNumber, setCalcRnNumber] = useState('');
@@ -2012,7 +2014,25 @@ export default function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">발주자</label>
-                  <input type="text" value={calcOrderer} onChange={e => setCalcOrderer(e.target.value)} placeholder="발주자명 입력" className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  {calcOrdererMode === 'select' ? (
+                    <select
+                      value={calcOrderer}
+                      onChange={e => {
+                        if (e.target.value === '__direct__') { setCalcOrdererMode('direct'); setCalcOrderer(''); }
+                        else setCalcOrderer(e.target.value);
+                      }}
+                      className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                    >
+                      <option value="">-- 선택 --</option>
+                      {ORDERER_LIST.map(n => <option key={n} value={n}>{n}</option>)}
+                      <option value="__direct__">✏️ 직접입력</option>
+                    </select>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input type="text" value={calcOrderer} onChange={e => setCalcOrderer(e.target.value)} placeholder="발주자명 직접 입력" autoFocus className="flex-1 p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm" />
+                      <button onClick={() => { setCalcOrdererMode('select'); setCalcOrderer(''); }} className="px-3 py-2 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">목록</button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div>

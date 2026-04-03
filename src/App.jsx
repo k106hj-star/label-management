@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { db, storage } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -1201,6 +1203,164 @@ export default function App() {
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
 
+  // ── PDF 발주서 생성 ──────────────────────────────────────────────────
+  const generateOrderPDF = async (resultDetails, vendorName = null) => {
+    const todayStr = (() => {
+      const d = new Date();
+      return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+    })();
+
+    // 공급처별 그룹
+    const groups = {};
+    resultDetails.forEach(item => {
+      const v = item.vendor || '(공급처 미입력)';
+      if (!vendorName || v === vendorName) {
+        if (!groups[v]) groups[v] = [];
+        groups[v].push(item);
+      }
+    });
+
+    // 이미지 → base64 변환
+    const loadImageBase64 = (url) => {
+      return new Promise((resolve) => {
+        if (!url) return resolve(null);
+        const img = new window.Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        };
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+    };
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    // 한글 폰트: 기본 폰트 사용 (한글은 유니코드 처리)
+    doc.setFont('helvetica');
+
+    let isFirstPage = true;
+
+    for (const [vendor, items] of Object.entries(groups)) {
+      if (!isFirstPage) doc.addPage();
+      isFirstPage = false;
+
+      // ── 제목 ──
+      doc.setFontSize(20);
+      doc.setTextColor(30, 30, 30);
+      doc.text(`${vendor} \uBC1C\uC8FC\uC11C`, doc.internal.pageSize.width / 2, 18, { align: 'center' });
+
+      // ── 테이블 행 구성 ──
+      const tableRows = [];
+      for (const item of items) {
+        const isCare = item.type === '\ucF00\uc5B4\ub77c\ubca8';
+        const imgB64 = await loadImageBase64(item.img);
+
+        // 라벨명 + 케어 정보
+        let labelCell = item.name;
+        if (isCare) {
+          const parts = [];
+          if (item.careInfo?.code)     parts.push(`\ud488\ubc88:${item.careInfo.code}`);
+          if (item.careInfo?.material) parts.push(`\uc18c\uc7ac:${item.careInfo.material}`);
+          if (calcMfgDate)             parts.push(`\uc81c\uc870\ub144\uc6d4:${calcMfgDate}`);
+          if (calcRnNumber)            parts.push(`RN#:${calcRnNumber}`);
+          labelCell = item.name + (parts.length ? '\n' + parts.join('\n') : '');
+        }
+
+        // 사이즈 분리 행 (사이즈라벨/스티커 등 사이즈 개별 분리)
+        const sizeRows = calcResult?.sizeBreakdown?.filter(Boolean) || [];
+        const hasSizeBreakdown = item.type && (item.type.includes('\uc0ac\uc774\uc988') || item.name.includes('\uc0ac\uc774\uc988'));
+        const relatedSizes = sizeRows.filter(r => r); // fallback
+
+        // 수량 계산
+        const qty = item.shortage > 0 ? item.shortage : item.needQty;
+
+        tableRows.push({
+          date: todayStr,
+          orderer: calcOrderer || '-',
+          factory: calcFactory || '-',
+          labelCell,
+          code: item.code || '-',
+          imgB64,
+          product: calcSearchText || '-',
+          size: item.size || 'FR',
+          qty: qty.toLocaleString(),
+          note: calcNote || '',
+          isCare,
+        });
+      }
+
+      // ── autoTable 렌더 ──
+      const COL_WIDTHS = [18, 16, 20, 38, 22, 22, 52, 12, 16, 30];
+      const HEADERS = [
+        '\uc791\uc131\uc77c', '\ubc1c\uc8fc\uc790', '\uc785\uace0\uc785\ucc98',
+        '\ub77c\ubca8\uba85', 'Style No', '\uc774\ubbf8\uc9c0',
+        '\uc0c1\ud488\uba85', 'size', '\uc218\ub7c9', '\ube44\uace0'
+      ];
+
+      autoTable(doc, {
+        startY: 24,
+        head: [HEADERS],
+        body: tableRows.map(r => [
+          r.date, r.orderer, r.factory, r.labelCell,
+          r.code, '', // 이미지 셀은 didDrawCell에서 처리
+          r.product, r.size, r.qty + '\uac1c', r.note
+        ]),
+        columnStyles: {
+          0: { cellWidth: COL_WIDTHS[0], halign: 'center', fontSize: 7 },
+          1: { cellWidth: COL_WIDTHS[1], halign: 'center', fontSize: 7 },
+          2: { cellWidth: COL_WIDTHS[2], halign: 'center', fontSize: 7 },
+          3: { cellWidth: COL_WIDTHS[3], fontSize: 7 },
+          4: { cellWidth: COL_WIDTHS[4], halign: 'center', fontSize: 7 },
+          5: { cellWidth: COL_WIDTHS[5], halign: 'center' },
+          6: { cellWidth: COL_WIDTHS[6], fontSize: 7 },
+          7: { cellWidth: COL_WIDTHS[7], halign: 'center', fontSize: 7 },
+          8: { cellWidth: COL_WIDTHS[8], halign: 'center', fontSize: 7 },
+          9: { cellWidth: COL_WIDTHS[9], fontSize: 7 },
+        },
+        headStyles: {
+          fillColor: [50, 50, 50], textColor: 255,
+          fontSize: 8, fontStyle: 'bold', halign: 'center',
+        },
+        bodyStyles: { minCellHeight: 20, valign: 'middle' },
+        alternateRowStyles: { fillColor: [252, 252, 252] },
+        willDrawCell: (data) => {
+          // 케어라벨 행 노란 배경
+          if (data.section === 'body') {
+            const row = tableRows[data.row.index];
+            if (row?.isCare) {
+              data.cell.styles.fillColor = [255, 255, 0];
+              data.cell.styles.textColor = [60, 60, 0];
+            }
+          }
+        },
+        didDrawCell: (data) => {
+          // 이미지 셀 (컬럼 5)
+          if (data.section === 'body' && data.column.index === 5) {
+            const row = tableRows[data.row.index];
+            if (row?.imgB64) {
+              const pad = 2;
+              const x = data.cell.x + pad;
+              const y = data.cell.y + pad;
+              const w = data.cell.width - pad * 2;
+              const h = data.cell.height - pad * 2;
+              try { doc.addImage(row.imgB64, 'JPEG', x, y, w, h, '', 'FAST'); } catch(e) {}
+            }
+          }
+        },
+        margin: { left: 8, right: 8 },
+        tableWidth: 'auto',
+      });
+    }
+
+    // 파일명: 공급처_발주서_날짜.pdf
+    const vendorLabel = vendorName || Object.keys(groups).join('_');
+    doc.save(`${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`);
+  };
+
   const logTypeConfig = {
     deduct:       { border: 'border-orange-200', bg: 'bg-orange-50/40',  badge: 'bg-orange-100 text-orange-700',   label: '📦 발주 확정 (재고 차감)' },
     restore:      { border: 'border-blue-200',   bg: 'bg-blue-50/40',    badge: 'bg-blue-100 text-blue-700',       label: '↩ 확정 취소 (재고 원복)' },
@@ -2312,7 +2472,34 @@ export default function App() {
                   <span className="font-medium text-slate-300">총 예상 발주 비용 합계</span>
                   <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
                 </div>
-                <div className="mt-4 flex justify-end items-center gap-3">
+                <div className="mt-4 flex justify-between items-center gap-3">
+                  {/* PDF 다운로드 버튼 (공급처별) */}
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const vendors = [...new Set(calcResult.details.map(d => d.vendor || '(공급처 미입력)'))];
+                      return vendors.map(v => (
+                        <button
+                          key={v}
+                          onClick={() => generateOrderPDF(calcResult.details, v)}
+                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                        >
+                          <FileDown size={16} /> {v} 발주서 PDF
+                        </button>
+                      ));
+                    })()}
+                    {(() => {
+                      const vendors = [...new Set(calcResult.details.map(d => d.vendor || '(공급처 미입력)'))];
+                      return vendors.length > 1 ? (
+                        <button
+                          onClick={() => generateOrderPDF(calcResult.details)}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                        >
+                          <FileDown size={16} /> 전체 PDF
+                        </button>
+                      ) : null;
+                    })()}
+                  </div>
+                  <div className="flex items-center gap-3">
                   <button
                     onClick={() => {
                       const order = {
@@ -2359,6 +2546,7 @@ export default function App() {
                   >
                     <X size={18} /> 취소
                   </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -2874,7 +2874,7 @@ export default function App() {
       {/* PDF 발주서 미리보기 팝업 */}
       {pdfPreview && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }}>
-          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '90vw', height: '90vh' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl shadow-2xl flex flex-col" style={{ width: '92vw', height: '92vh' }} onClick={e => e.stopPropagation()}>
             {/* 헤더 */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 shrink-0">
               <div className="flex items-center gap-2">
@@ -2882,6 +2882,12 @@ export default function App() {
                 <span className="font-bold text-slate-800 text-sm">{pdfPreview.filename}</span>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.open(pdfPreview.url, '_blank')}
+                  className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  새 탭에서 열기
+                </button>
                 <a
                   href={pdfPreview.url}
                   download={pdfPreview.filename}
@@ -2892,11 +2898,11 @@ export default function App() {
                 <button onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }} className="text-slate-400 hover:text-red-500 p-1"><X size={20} /></button>
               </div>
             </div>
-            {/* PDF 미리보기 */}
-            <iframe
-              src={pdfPreview.url}
+            {/* PDF 미리보기 — embed가 가장 안정적 */}
+            <embed
+              src={pdfPreview.url + '#toolbar=1&navpanes=0'}
+              type="application/pdf"
               className="flex-1 w-full rounded-b-xl"
-              title="PDF 미리보기"
               style={{ border: 'none' }}
             />
           </div>

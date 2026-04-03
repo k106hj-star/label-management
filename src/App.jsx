@@ -2277,7 +2277,7 @@ export default function App() {
                   <span className="font-medium text-slate-300">총 예상 발주 비용 합계</span>
                   <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
                 </div>
-                <div className="mt-4 flex justify-between items-center">
+                <div className="mt-4 flex justify-end items-center gap-3">
                   <button
                     onClick={() => {
                       if (!window.confirm('처음부터 다시 시작하시겠습니까?\n입력한 내용이 모두 초기화됩니다.')) return;
@@ -2297,9 +2297,9 @@ export default function App() {
                       setCalcDaebongType('');
                       setCalcDaebongQty('');
                     }}
-                    className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-3 rounded-lg font-medium transition-colors"
+                    className="flex items-center gap-2 bg-slate-500 hover:bg-slate-600 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
                   >
-                    <X size={16} /> 취소 (처음부터)
+                    <X size={18} /> 취소
                   </button>
                   <button
                     onClick={() => {

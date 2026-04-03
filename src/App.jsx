@@ -2277,7 +2277,7 @@ export default function App() {
                   <span className="font-medium text-slate-300">총 예상 발주 비용 합계</span>
                   <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
                 </div>
-                <div className="mt-4 flex justify-end items-center gap-3">
+                <div className="mt-4 flex justify-between items-center">
                   <button
                     onClick={() => {
                       if (!window.confirm('처음부터 다시 시작하시겠습니까?\n입력한 내용이 모두 초기화됩니다.')) return;

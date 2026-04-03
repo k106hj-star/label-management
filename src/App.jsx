@@ -1215,163 +1215,172 @@ export default function App() {
   const generateOrderPDF = async (resultDetails, vendorName = null) => {
     setPdfLoading(true);
     try {
-    const todayStr = (() => {
-      const d = new Date();
-      return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
-    })();
+      const todayStr = (() => {
+        const d = new Date();
+        return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
+      })();
 
-    // 공급처별 그룹
-    const groups = {};
-    resultDetails.forEach(item => {
-      const v = item.vendor || '(공급처 미입력)';
-      if (!vendorName || v === vendorName) {
-        if (!groups[v]) groups[v] = [];
-        groups[v].push(item);
-      }
-    });
+      // 공급처별 그룹
+      const groups = {};
+      resultDetails.forEach(item => {
+        const v = item.vendor || '(공급처 미입력)';
+        if (!vendorName || v === vendorName) {
+          if (!groups[v]) groups[v] = [];
+          groups[v].push(item);
+        }
+      });
 
-    // 이미지 → base64 변환
-    const loadImageBase64 = (url) => {
-      return new Promise((resolve) => {
+      // 이미지 → base64 변환
+      const loadImageBase64 = (url) => new Promise((resolve) => {
         if (!url) return resolve(null);
         const img = new window.Image();
         img.crossOrigin = 'Anonymous';
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
+          canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
           canvas.getContext('2d').drawImage(img, 0, 0);
           resolve(canvas.toDataURL('image/jpeg', 0.8));
         };
         img.onerror = () => resolve(null);
         img.src = url;
       });
-    };
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    // 한글 폰트: 기본 폰트 사용 (한글은 유니코드 처리)
-    doc.setFont('helvetica');
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      doc.setFont('helvetica');
 
-    let isFirstPage = true;
+      const COL_WIDTHS = [18, 16, 20, 38, 22, 22, 52, 12, 18, 30];
+      const HEADERS = ['\uc791\uc131\uc77c','\ubc1c\uc8fc\uc790','\uc785\uace0\uc785\ucc98','\ub77c\ubca8\uba85','Style No','\uc774\ubbf8\uc9c0','\uc0c1\ud488\uba85','size','\uc218\ub7c9','\ube44\uace0'];
 
-    for (const [vendor, items] of Object.entries(groups)) {
-      if (!isFirstPage) doc.addPage();
-      isFirstPage = false;
+      let isFirstPage = true;
 
-      // ── 제목 ──
-      doc.setFontSize(20);
-      doc.setTextColor(30, 30, 30);
-      doc.text(`${vendor} \uBC1C\uC8FC\uC11C`, doc.internal.pageSize.width / 2, 18, { align: 'center' });
+      for (const [vendor, items] of Object.entries(groups)) {
+        if (!isFirstPage) doc.addPage();
+        isFirstPage = false;
 
-      // ── 테이블 행 구성 ──
-      const tableRows = [];
-      for (const item of items) {
-        const isCare = item.type === '\ucF00\uc5B4\ub77c\ubca8';
-        const imgB64 = await loadImageBase64(item.img);
+        // 제목
+        doc.setFontSize(20);
+        doc.setTextColor(30, 30, 30);
+        doc.text(`${vendor} \uBC1C\uC8FC\uC11C`, doc.internal.pageSize.width / 2, 18, { align: 'center' });
 
-        // 라벨명 + 케어 정보
-        let labelCell = item.name;
-        if (isCare) {
-          const parts = [];
-          if (item.careInfo?.code)     parts.push(`\ud488\ubc88:${item.careInfo.code}`);
-          if (item.careInfo?.material) parts.push(`\uc18c\uc7ac:${item.careInfo.material}`);
-          if (calcMfgDate)             parts.push(`\uc81c\uc870\ub144\uc6d4:${calcMfgDate}`);
-          if (calcRnNumber)            parts.push(`RN#:${calcRnNumber}`);
-          labelCell = item.name + (parts.length ? '\n' + parts.join('\n') : '');
+        // 라벨명 기준으로 그룹화 (같은 이름 = 같은 라벨, 이미지 공유)
+        const nameGroupMap = new Map();
+        items.forEach(item => {
+          const key = item.name + '||' + (item.code || '');
+          if (!nameGroupMap.has(key)) nameGroupMap.set(key, []);
+          nameGroupMap.get(key).push(item);
+        });
+
+        // 이미지 프리로드
+        const imgCache = {};
+        for (const item of items) {
+          const key = item.name + '||' + (item.code || '');
+          if (item.img && !imgCache[key]) {
+            imgCache[key] = await loadImageBase64(item.img);
+          }
         }
 
-        // 사이즈 분리 행 (사이즈라벨/스티커 등 사이즈 개별 분리)
-        const sizeRows = calcResult?.sizeBreakdown?.filter(Boolean) || [];
-        const hasSizeBreakdown = item.type && (item.type.includes('\uc0ac\uc774\uc988') || item.name.includes('\uc0ac\uc774\uc988'));
-        const relatedSizes = sizeRows.filter(r => r); // fallback
+        // autoTable body 구성 (rowSpan 적용)
+        const tableBody = [];
+        const rowImageMap = {}; // bodyRowIndex → base64
 
-        // 수량 계산
-        const qty = item.shortage > 0 ? item.shortage : item.needQty;
+        for (const [key, groupItems] of nameGroupMap.entries()) {
+          const n = groupItems.length;
+          const first = groupItems[0];
+          const isCare = first.type === '\ucF00\uc5B4\ub77c\ubca8';
+          const imgB64 = imgCache[key] || null;
 
-        tableRows.push({
-          date: todayStr,
-          orderer: calcOrderer || '-',
-          factory: calcFactory || '-',
-          labelCell,
-          code: item.code || '-',
-          imgB64,
-          product: calcSearchText || '-',
-          size: item.size || 'FR',
-          qty: qty.toLocaleString(),
-          note: calcNote || '',
-          isCare,
+          // 라벨명 (케어라벨이면 추가 정보 포함)
+          let labelContent = first.name;
+          if (isCare) {
+            const parts = [];
+            if (first.careInfo?.code)     parts.push(`\ud488\ubc88: ${first.careInfo.code}`);
+            if (first.careInfo?.material) parts.push(`\uc18c\uc7ac: ${first.careInfo.material}`);
+            if (calcMfgDate)              parts.push(`\uc81c\uc870\ub144\uc6d4: ${calcMfgDate}`);
+            if (calcRnNumber)             parts.push(`RN#: ${calcRnNumber}`);
+            if (parts.length) labelContent += '\n' + parts.join('\n');
+          }
+
+          const careStyle  = isCare ? { fillColor: [255, 255, 0], textColor: [60, 60, 0] } : {};
+          const baseStyle  = (extra = {}) => ({ fontSize: 7, valign: 'middle', ...careStyle, ...extra });
+
+          // 첫 행에서 이미지 기록
+          const firstRowIdx = tableBody.length;
+          if (imgB64) rowImageMap[firstRowIdx] = imgB64;
+
+          groupItems.forEach((item, idx) => {
+            const qty = item.shortage > 0 ? item.shortage : item.needQty;
+            const sizeStr = item.size || 'FR';
+            const qtyStr  = qty.toLocaleString() + '\uac1c';
+
+            if (idx === 0) {
+              // 첫 행 — 공통 셀에 rowSpan 적용
+              tableBody.push([
+                { content: todayStr,             rowSpan: n, styles: baseStyle({ halign: 'center' }) },
+                { content: calcOrderer || '-',   rowSpan: n, styles: baseStyle({ halign: 'center' }) },
+                { content: calcFactory || '-',   rowSpan: n, styles: baseStyle({ halign: 'center' }) },
+                { content: labelContent,         rowSpan: n, styles: baseStyle() },
+                { content: first.code || '-',    rowSpan: n, styles: baseStyle({ halign: 'center' }) },
+                { content: '',                   rowSpan: n, styles: { ...careStyle } }, // 이미지 (didDrawCell)
+                { content: calcSearchText || '-',rowSpan: n, styles: baseStyle() },
+                { content: sizeStr,                          styles: baseStyle({ halign: 'center' }) },
+                { content: qtyStr,                           styles: baseStyle({ halign: 'center', fontStyle: 'bold' }) },
+                { content: calcNote || '',       rowSpan: n, styles: baseStyle() },
+              ]);
+            } else {
+              // 이후 행 — size, qty만 (rowSpan된 컬럼 생략)
+              tableBody.push([
+                { content: sizeStr, styles: baseStyle({ halign: 'center' }) },
+                { content: qtyStr,  styles: baseStyle({ halign: 'center', fontStyle: 'bold' }) },
+              ]);
+            }
+          });
+        }
+
+        autoTable(doc, {
+          startY: 24,
+          head: [HEADERS],
+          body: tableBody,
+          columnStyles: {
+            0: { cellWidth: COL_WIDTHS[0] },
+            1: { cellWidth: COL_WIDTHS[1] },
+            2: { cellWidth: COL_WIDTHS[2] },
+            3: { cellWidth: COL_WIDTHS[3] },
+            4: { cellWidth: COL_WIDTHS[4] },
+            5: { cellWidth: COL_WIDTHS[5] },
+            6: { cellWidth: COL_WIDTHS[6] },
+            7: { cellWidth: COL_WIDTHS[7] },
+            8: { cellWidth: COL_WIDTHS[8] },
+            9: { cellWidth: COL_WIDTHS[9] },
+          },
+          headStyles: { fillColor: [50, 50, 50], textColor: 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
+          bodyStyles: { minCellHeight: 20, valign: 'middle' },
+          alternateRowStyles: { fillColor: false }, // rowSpan 그룹 혼란 방지
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 5) {
+              const b64 = rowImageMap[data.row.index];
+              if (b64) {
+                const pad = 2;
+                try {
+                  doc.addImage(b64, 'JPEG',
+                    data.cell.x + pad, data.cell.y + pad,
+                    data.cell.width - pad * 2, data.cell.height - pad * 2,
+                    '', 'FAST'
+                  );
+                } catch(e) {}
+              }
+            }
+          },
+          margin: { left: 8, right: 8 },
+          tableWidth: 'auto',
         });
       }
 
-      // ── autoTable 렌더 ──
-      const COL_WIDTHS = [18, 16, 20, 38, 22, 22, 52, 12, 16, 30];
-      const HEADERS = [
-        '\uc791\uc131\uc77c', '\ubc1c\uc8fc\uc790', '\uc785\uace0\uc785\ucc98',
-        '\ub77c\ubca8\uba85', 'Style No', '\uc774\ubbf8\uc9c0',
-        '\uc0c1\ud488\uba85', 'size', '\uc218\ub7c9', '\ube44\uace0'
-      ];
-
-      autoTable(doc, {
-        startY: 24,
-        head: [HEADERS],
-        body: tableRows.map(r => [
-          r.date, r.orderer, r.factory, r.labelCell,
-          r.code, '', // 이미지 셀은 didDrawCell에서 처리
-          r.product, r.size, r.qty + '\uac1c', r.note
-        ]),
-        columnStyles: {
-          0: { cellWidth: COL_WIDTHS[0], halign: 'center', fontSize: 7 },
-          1: { cellWidth: COL_WIDTHS[1], halign: 'center', fontSize: 7 },
-          2: { cellWidth: COL_WIDTHS[2], halign: 'center', fontSize: 7 },
-          3: { cellWidth: COL_WIDTHS[3], fontSize: 7 },
-          4: { cellWidth: COL_WIDTHS[4], halign: 'center', fontSize: 7 },
-          5: { cellWidth: COL_WIDTHS[5], halign: 'center' },
-          6: { cellWidth: COL_WIDTHS[6], fontSize: 7 },
-          7: { cellWidth: COL_WIDTHS[7], halign: 'center', fontSize: 7 },
-          8: { cellWidth: COL_WIDTHS[8], halign: 'center', fontSize: 7 },
-          9: { cellWidth: COL_WIDTHS[9], fontSize: 7 },
-        },
-        headStyles: {
-          fillColor: [50, 50, 50], textColor: 255,
-          fontSize: 8, fontStyle: 'bold', halign: 'center',
-        },
-        bodyStyles: { minCellHeight: 20, valign: 'middle' },
-        alternateRowStyles: { fillColor: [252, 252, 252] },
-        willDrawCell: (data) => {
-          // 케어라벨 행 노란 배경
-          if (data.section === 'body') {
-            const row = tableRows[data.row.index];
-            if (row?.isCare) {
-              data.cell.styles.fillColor = [255, 255, 0];
-              data.cell.styles.textColor = [60, 60, 0];
-            }
-          }
-        },
-        didDrawCell: (data) => {
-          // 이미지 셀 (컬럼 5)
-          if (data.section === 'body' && data.column.index === 5) {
-            const row = tableRows[data.row.index];
-            if (row?.imgB64) {
-              const pad = 2;
-              const x = data.cell.x + pad;
-              const y = data.cell.y + pad;
-              const w = data.cell.width - pad * 2;
-              const h = data.cell.height - pad * 2;
-              try { doc.addImage(row.imgB64, 'JPEG', x, y, w, h, '', 'FAST'); } catch(e) {}
-            }
-          }
-        },
-        margin: { left: 8, right: 8 },
-        tableWidth: 'auto',
-      });
-    }
-
-    // blob URL로 변환 → 미리보기 팝업에 표시
-    const vendorLabel = vendorName || Object.keys(groups).join('_');
-    const filename = `${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`;
-    const blob = doc.output('blob');
-    const url = URL.createObjectURL(blob);
-    setPdfPreview({ url, filename });
+      // blob URL → 미리보기 팝업
+      const vendorLabel = vendorName || Object.keys(groups).join('_');
+      const filename = `${vendorLabel}_\uBC1C\uC8FC\uC11C_${todayStr}.pdf`;
+      const blob = doc.output('blob');
+      const url = URL.createObjectURL(blob);
+      setPdfPreview({ url, filename });
     } catch(e) { alert('PDF 생성 중 오류가 발생했습니다.'); console.error(e); }
     finally { setPdfLoading(false); }
   };

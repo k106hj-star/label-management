@@ -1133,7 +1133,7 @@ export default function App() {
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
   const [calcNote, setCalcNote] = useState('');
-  const [calcMfgDate, setCalcMfgDate] = useState('');
+  const [calcMfgDate, setCalcMfgDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`; });
   const [calcRnNumber, setCalcRnNumber] = useState('');
 
   const calcColorList = calcColorText.split(',').map(s => s.trim()).filter(Boolean);
@@ -1995,7 +1995,7 @@ export default function App() {
                           : products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).map(p => (
                             <li
                               key={p.id}
-                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); setCalcMfgDate(''); setCalcRnNumber(''); }}
+                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); const _d = new Date(); setCalcMfgDate(`${_d.getFullYear()}.${String(_d.getMonth()+1).padStart(2,'0')}`); setCalcRnNumber(''); }}
                               className={`px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 ${String(p.id) === calcTarget ? 'bg-emerald-100 font-medium' : ''}`}
                             >
                               [{p.brand}] {p.name}
@@ -2146,7 +2146,8 @@ export default function App() {
                                 <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                                 <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                                <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">수량</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">현재고</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                                 <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                               </tr>
                             </thead>

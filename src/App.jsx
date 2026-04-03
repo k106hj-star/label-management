@@ -102,9 +102,10 @@ function parseCSV(csvText) {
   const iCode   = col(['품번']);
   const iSize   = col(['사이즈']);
   const iStock  = col(['재고수량', '현재고']);
-  const iSafety = col(['안전재고']);
-  const iPrice  = col(['단가']);
-  const iVendor = col(['공급처']);
+  const iSafety   = col(['안전재고']);
+  const iReserve  = col(['최소보유수량']);
+  const iPrice    = col(['단가']);
+  const iVendor   = col(['공급처']);
 
   const results = [];
   for (let i = 1; i < lines.length; i++) {
@@ -113,9 +114,10 @@ function parseCSV(csvText) {
     const f = parseCSVLine(line);
     if (f.length < 5) continue;
     const get = (idx) => (idx >= 0 && idx < f.length) ? f[idx] : '';
-    const stockRaw = get(iStock).replace(/,/g, '');
-    const priceRaw = get(iPrice).replace(/,/g, '');
-    const safetyRaw = get(iSafety).replace(/,/g, '');
+    const stockRaw   = get(iStock).replace(/,/g, '');
+    const priceRaw   = get(iPrice).replace(/,/g, '');
+    const safetyRaw  = get(iSafety).replace(/,/g, '');
+    const reserveRaw = get(iReserve).replace(/,/g, '');
     results.push({
       id: i,
       brand: get(iBrand),
@@ -125,6 +127,7 @@ function parseCSV(csvText) {
       size: get(iSize),
       stock: (!stockRaw || stockRaw === '-') ? 0 : (parseInt(stockRaw) || 0),
       safetyStock: (!safetyRaw || safetyRaw === '-') ? 0 : (parseInt(safetyRaw) || 0),
+      reserveStock: (!reserveRaw || reserveRaw === '-') ? 0 : (parseInt(reserveRaw) || 0),
       price: (!priceRaw || priceRaw === '-') ? 0 : (parseInt(priceRaw) || 0),
       vendor: get(iVendor),
       img: ''
@@ -469,7 +472,7 @@ export default function App() {
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
     const original = labels.find(l => l.id === editLabel.id);
-    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '현재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
     const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
     if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
@@ -537,7 +540,7 @@ export default function App() {
   const pagedLabels = filteredLabels.slice((labelPage - 1) * labelPageSize, labelPage * labelPageSize);
 
   // --- [1] 라벨 마스터 관련 함수 ---
-  const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
+  const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', img: '' });
   const [showAddLabelModal, setShowAddLabelModal] = useState(false);
 
   const handleImageUpload = async (e) => {
@@ -607,10 +610,10 @@ export default function App() {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = '브랜드,종류,라벨명,품번,사이즈,현재고,안전재고,단가,공급처';
+    const header = '브랜드,종류,라벨명,품번,사이즈,현재고,안전재고,최소보유수량,단가,공급처';
     const rows = labels.map(l => [
       l.brand, l.type, l.name, l.code, l.size,
-      l.stock ?? 0, l.safetyStock ?? 0, l.price ?? 0, l.vendor ?? ''
+      l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? ''
     ].map(escape).join(','));
     const bom = '\uFEFF';
     const blob = new Blob([bom + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -625,7 +628,7 @@ export default function App() {
   // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
   const CSV_ALWAYS_UPDATE = ['stock'];
   const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor'];
-  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', price: '단가', vendor: '공급처' };
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
 
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
@@ -717,7 +720,7 @@ export default function App() {
     const { _imgFile, ...labelData } = newLabel;
     setLabels([{ ...labelData, id: Date.now() }, ...labels]);
     addLog({ type: 'add', labelName: newLabel.name, labelCode: newLabel.code, labelBrand: newLabel.brand, summary: `라벨 신규 등록: ${newLabel.name} (${newLabel.code})` });
-    setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, price: 0, vendor: '', img: '' });
+    setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', img: '' });
     setShowAddLabelModal(false);
   };
 
@@ -1189,7 +1192,8 @@ export default function App() {
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
       const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * totalQty;
-      const shortage = Math.max(0, totalNeed - label.stock);
+      const availableStock = Math.max(0, label.stock - (label.reserveStock ?? 0));
+      const shortage = Math.max(0, totalNeed - availableStock);
       const cost = shortage * label.price;
       totalCost += cost;
       return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost };
@@ -1567,6 +1571,7 @@ export default function App() {
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">사이즈</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">현재고</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">안전재고</th>
+                    <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">최소보유</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">단가</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">공급처</th>
                     <th className="p-3 font-medium text-center sticky top-0 bg-slate-50 z-10">관리</th>
@@ -1620,6 +1625,9 @@ export default function App() {
                       <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : l.stock.toLocaleString()}</td>
                       <td className="p-3 text-right text-sm">
                         <input type="number" min="0" value={l.safetyStock || 0} onFocus={e => { safetyStockPrev.current[l.id] = parseInt(e.target.value) || 0; }} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} onBlur={e => { const newVal = parseInt(e.target.value) || 0; const oldVal = safetyStockPrev.current[l.id]; if (oldVal !== undefined && oldVal !== newVal) addLog({ type: 'safety_stock', labelId: l.id, labelName: l.name, labelCode: l.code, before: oldVal, after: newVal, summary: `안전재고 변경: ${l.name} (${l.code}) ${oldVal}→${newVal}` }); delete safetyStockPrev.current[l.id]; }} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
+                      </td>
+                      <td className="p-3 text-right text-sm">
+                        <input type="number" min="0" value={l.reserveStock ?? 0} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, reserveStock: parseInt(e.target.value) || 0 } : lb))} className="w-16 p-1 border border-amber-200 rounded text-right text-sm bg-amber-50 text-amber-700" />
                       </td>
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>
@@ -1777,6 +1785,10 @@ export default function App() {
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">현재 재고(수량)</label>
                       <input type="number" value={newLabel.stock} onChange={e => setNewLabel({ ...newLabel, stock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">최소보유수량 <span className="text-amber-500">(발주 계산 제외)</span></label>
+                      <input type="number" value={newLabel.reserveStock ?? 0} onChange={e => setNewLabel({ ...newLabel, reserveStock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-amber-300 rounded text-sm" placeholder="예: 100" />
                     </div>
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">단가(원)</label>
@@ -2239,6 +2251,7 @@ export default function App() {
                                 <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">현재고</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                                 <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                               </tr>
@@ -2269,7 +2282,26 @@ export default function App() {
                                   </td>
                                   <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
                                   <td className="p-3 text-center text-slate-700 text-base font-bold">{item.size || '-'}</td>
-                                  <td className="p-3 text-right text-slate-500">{labels.find(l => l.id === item.id)?.stock?.toLocaleString() ?? '-'}</td>
+                                  <td className="p-3 text-right text-slate-500">
+                                    {(() => {
+                                      const lbl = labels.find(l => l.id === item.id);
+                                      return (
+                                        <div>
+                                          <div>{lbl?.stock?.toLocaleString() ?? '-'}</div>
+                                          {(lbl?.reserveStock ?? 0) > 0 && (
+                                            <div className="text-xs text-amber-600 whitespace-nowrap">유보 {lbl.reserveStock.toLocaleString()}</div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                  <td className="p-3 text-right text-amber-700 font-medium">
+                                    {(() => {
+                                      const lbl = labels.find(l => l.id === item.id);
+                                      const avail = Math.max(0, (lbl?.stock ?? 0) - (lbl?.reserveStock ?? 0));
+                                      return avail.toLocaleString();
+                                    })()}
+                                  </td>
                                   <td className="p-3 text-right font-bold">
                                     <span className={item.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>
                                       {item.shortage.toLocaleString()}개
@@ -2822,6 +2854,10 @@ export default function App() {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">현재 재고</label>
                 <input type="number" value={editLabel.stock} onChange={e => setEditLabel({ ...editLabel, stock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">최소보유수량 <span className="text-amber-500">(발주 계산 제외)</span></label>
+                <input type="number" value={editLabel.reserveStock ?? 0} onChange={e => setEditLabel({ ...editLabel, reserveStock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-amber-300 rounded text-sm" placeholder="예: 100" />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">단가(원)</label>

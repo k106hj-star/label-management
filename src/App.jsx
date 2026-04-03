@@ -1196,7 +1196,7 @@ export default function App() {
       const shortage = Math.max(0, totalNeed - availableStock);
       const cost = shortage * label.price;
       totalCost += cost;
-      return { ...label, careInfo: item.careInfo, needQty: totalNeed, shortage, cost };
+      return { ...label, careInfo: item.careInfo, needQty: totalNeed, availableStock, shortage, cost };
     }).filter(Boolean);
     setCalcResult({ details, totalCost, totalQty, sizeBreakdown: validRows });
   };
@@ -2283,24 +2283,15 @@ export default function App() {
                                   <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
                                   <td className="p-3 text-center text-slate-700 text-base font-bold">{item.size || '-'}</td>
                                   <td className="p-3 text-right text-slate-500">
-                                    {(() => {
-                                      const lbl = labels.find(l => l.id === item.id);
-                                      return (
-                                        <div>
-                                          <div>{lbl?.stock?.toLocaleString() ?? '-'}</div>
-                                          {(lbl?.reserveStock ?? 0) > 0 && (
-                                            <div className="text-xs text-amber-600 whitespace-nowrap">유보 {lbl.reserveStock.toLocaleString()}</div>
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
+                                    <div>
+                                      <div>{(item.stock ?? 0).toLocaleString()}</div>
+                                      {(item.reserveStock ?? 0) > 0 && (
+                                        <div className="text-xs text-amber-600 whitespace-nowrap">유보 {item.reserveStock.toLocaleString()}</div>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="p-3 text-right text-amber-700 font-medium">
-                                    {(() => {
-                                      const lbl = labels.find(l => l.id === item.id);
-                                      const avail = Math.max(0, (lbl?.stock ?? 0) - (lbl?.reserveStock ?? 0));
-                                      return avail.toLocaleString();
-                                    })()}
+                                    {(item.availableStock ?? item.stock ?? 0).toLocaleString()}
                                   </td>
                                   <td className="p-3 text-right font-bold">
                                     <span className={item.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>

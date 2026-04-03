@@ -507,6 +507,7 @@ export default function App() {
   // 브랜드 필터 & 검색 상태
   const [brandFilter, setBrandFilter] = useState('전체');
   const [vendorFilter, setVendorFilter] = useState('전체');
+  const [typeFilter, setTypeFilter] = useState('전체');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const fixedBrands = ['WV', 'JM', 'EZ', 'FP', '공용'];
@@ -516,12 +517,14 @@ export default function App() {
 
   const executeSearch = () => { setSearchQuery(searchInput); setLabelPage(1); };
 
+  const typeList = ['전체', ...[...new Set(labels.map(l => l.type).filter(Boolean))].sort()];
   const filteredLabels = labels.filter(l => {
     const brandMatch = brandFilter === '전체' || l.brand === brandFilter;
     const vendorMatch = vendorFilter === '전체' || l.vendor === vendorFilter;
-    if (!searchQuery.trim()) return brandMatch && vendorMatch;
+    const typeMatch = typeFilter === '전체' || l.type === typeFilter;
+    if (!searchQuery.trim()) return brandMatch && vendorMatch && typeMatch;
     const q = searchQuery.trim().toLowerCase();
-    return brandMatch && vendorMatch && (
+    return brandMatch && vendorMatch && typeMatch && (
       l.name.toLowerCase().includes(q) ||
       l.code.toLowerCase().includes(q) ||
       l.type.toLowerCase().includes(q) ||
@@ -1497,13 +1500,17 @@ export default function App() {
                   {searchQuery && <button onClick={() => { setSearchInput(''); setSearchQuery(''); }} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs font-medium rounded-lg transition-colors">초기화</button>}
                 </div>
                 {/* 브랜드 필터 */}
-                <div className="flex gap-1">
-                  {brandList.map(b => (
-                    <button key={b} onClick={() => { setBrandFilter(b); setLabelPage(1); }} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${brandFilter === b ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                      {b}
-                    </button>
-                  ))}
-                </div>
+                <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+                  {brandList.map(b => <option key={b} value={b}>{b === '전체' ? '브랜드 전체' : b}</option>)}
+                </select>
+                {/* 공급처 필터 */}
+                <select value={vendorFilter} onChange={e => { setVendorFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {vendorList.map(v => <option key={v} value={v}>{v === '전체' ? '공급처 전체' : v}</option>)}
+                </select>
+                {/* 종류 필터 */}
+                <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                  {typeList.map(t => <option key={t} value={t}>{t === '전체' ? '종류 전체' : t}</option>)}
+                </select>
                 {/* 신규 라벨 추가 버튼 */}
                 <button onClick={() => setShowAddLabelModal(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
                   <Plus size={16} /> 신규 라벨 추가
@@ -1520,20 +1527,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* 공급처 필터 */}
-            {vendorList.length > 1 && (
-              <div className="flex items-center gap-2 flex-wrap -mt-3">
-                <span className="text-xs text-slate-400 shrink-0">공급처</span>
-                <div className="flex gap-1 flex-wrap">
-                  {vendorList.map(v => (
-                    <button key={v} onClick={() => { setVendorFilter(v); setLabelPage(1); }}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${vendorFilter === v ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* 일괄 액션 바 */}
             {selectedLabelIds.size > 0 && (

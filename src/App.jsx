@@ -2226,7 +2226,7 @@ export default function App() {
                                     }
                                   </td>
                                   <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
-                                  <td className="p-3 text-center text-slate-600">{item.size || '-'}</td>
+                                  <td className="p-3 text-center text-slate-700 text-base font-bold">{item.size || '-'}</td>
                                   <td className="p-3 text-right text-slate-500">{labels.find(l => l.id === item.id)?.stock?.toLocaleString() ?? '-'}</td>
                                   <td className="p-3 text-right font-bold">
                                     <span className={item.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>
@@ -2485,7 +2485,7 @@ export default function App() {
                                   }
                                 </td>
                                 <td className="p-3 text-slate-700">{viewOrder.productName || '-'}</td>
-                                <td className="p-3 text-center text-slate-600">{d.size || '-'}</td>
+                                <td className="p-3 text-center text-slate-700 text-base font-bold">{d.size || '-'}</td>
                                 <td className="p-3 text-right font-bold">
                                   {viewOrderEditMode
                                     ? <input

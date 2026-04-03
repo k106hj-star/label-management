@@ -1347,14 +1347,35 @@ export default function App() {
           </table>
         </div>`;
 
-        // DOM에 임시 삽입 후 캡처
+        // DOM에 임시 삽입 후 이미지 로드 완료 대기 → 캡처
         const wrapper = document.createElement('div');
         wrapper.style.cssText = 'position:fixed;top:-99999px;left:-99999px;z-index:-1;';
         wrapper.innerHTML = html;
         document.body.appendChild(wrapper);
 
+        // 모든 img 태그 로드 완료 대기
+        const imgEls = Array.from(wrapper.querySelectorAll('img'));
+        await Promise.all(imgEls.map(img =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise(res => { img.onload = res; img.onerror = res; })
+        ));
+
         const canvas = await html2canvas(wrapper.firstChild, {
-          scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          imageTimeout: 15000,
+          onclone: (clonedDoc) => {
+            // 클론된 DOM의 img도 로드 대기
+            return Promise.all(
+              Array.from(clonedDoc.querySelectorAll('img')).map(img =>
+                img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })
+              )
+            );
+          }
         });
         document.body.removeChild(wrapper);
 

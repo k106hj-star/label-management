@@ -2169,6 +2169,7 @@ export default function App() {
                                   </td>
                                   <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
                                   <td className="p-3 text-center text-slate-600">{item.size || '-'}</td>
+                                  <td className="p-3 text-right text-slate-500">{labels.find(l => l.id === item.id)?.stock?.toLocaleString() ?? '-'}</td>
                                   <td className="p-3 text-right font-bold">
                                     {item.shortage > 0
                                       ? <span className="text-red-600">{item.shortage.toLocaleString()}개</span>

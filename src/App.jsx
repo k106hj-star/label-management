@@ -2221,10 +2221,9 @@ export default function App() {
                                   <td className="p-3 text-center text-slate-600">{item.size || '-'}</td>
                                   <td className="p-3 text-right text-slate-500">{labels.find(l => l.id === item.id)?.stock?.toLocaleString() ?? '-'}</td>
                                   <td className="p-3 text-right font-bold">
-                                    {item.shortage > 0
-                                      ? <span className="text-red-600">{item.shortage.toLocaleString()}개</span>
-                                      : <span className="text-emerald-600 text-xs font-normal">재고충분</span>
-                                    }
+                                    <span className={item.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>
+                                      {item.shortage.toLocaleString()}개
+                                    </span>
                                   </td>
                                   <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{calcNote || '-'}</td>
                                 </tr>
@@ -2492,9 +2491,7 @@ export default function App() {
                                         })}
                                         className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300"
                                       />
-                                    : d.shortage > 0
-                                      ? <span className="text-red-600">{d.shortage.toLocaleString()}개</span>
-                                      : <span className="text-emerald-600 text-xs font-normal">재고충분</span>
+                                    : <span className={d.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>{d.shortage.toLocaleString()}개</span>
                                   }
                                 </td>
                                 <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrderEditMode ? (viewOrderEdits.note || '-') : (viewOrder.note || '-')}</td>

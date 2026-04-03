@@ -966,6 +966,8 @@ export default function App() {
   const [logSearch, setLogSearch] = useState('');
   const [expandedLogs, setExpandedLogs] = useState(new Set());
   const toggleLog = (id) => setExpandedLogs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const [logPage, setLogPage] = useState(1);
+  const [logPageSize, setLogPageSize] = useState(30);
   const [stockLogs, setStockLogs] = useState(() => {
     const saved = localStorage.getItem('label_stock_logs');
     return saved ? JSON.parse(saved) : [];
@@ -1129,6 +1131,8 @@ export default function App() {
       (log.items || []).some(item => (item.labelName || '').toLowerCase().includes(q))
     );
   })();
+  const logTotalPages = Math.max(1, Math.ceil(filteredStockLogs.length / logPageSize));
+  const pagedStockLogs = filteredStockLogs.slice((logPage - 1) * logPageSize, logPage * logPageSize);
 
   // --- [3] 발주 계산기 함수 ---
   const [calcTarget, setCalcTarget] = useState('');
@@ -2942,7 +2946,7 @@ export default function App() {
               <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
                 <Search size={14} className="text-slate-400" />
                 <input
-                  type="text" value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                  type="text" value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(1); }}
                   placeholder="상품명, 라벨명 검색"
                   className="text-sm outline-none w-44 text-slate-700 placeholder-slate-400"
                 />
@@ -2969,9 +2973,42 @@ export default function App() {
               <p className="text-sm">검색 결과가 없습니다.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredStockLogs.map(log => renderLogCard(log))}
-            </div>
+            <>
+              {/* 상단 페이지네이션 */}
+              <div className="flex items-center justify-between flex-wrap gap-3 pb-1">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span>페이지당</span>
+                  {[30, 50, 100].map(size => (
+                    <button key={size} onClick={() => { setLogPageSize(size); setLogPage(1); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${logPageSize === size ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {size}
+                    </button>
+                  ))}
+                  <span className="ml-2 text-slate-400">{filteredStockLogs.length}건 중 {(logPage-1)*logPageSize+1}–{Math.min(logPage*logPageSize, filteredStockLogs.length)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setLogPage(1)} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                  <button onClick={() => setLogPage(p => Math.max(1, p-1))} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                  {Array.from({length: logTotalPages}, (_, i) => i+1)
+                    .filter(p => p === 1 || p === logTotalPages || Math.abs(p - logPage) <= 2)
+                    .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, [])
+                    .map((p, idx) => p === '...' ? (
+                      <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
+                    ) : (
+                      <button key={p} onClick={() => setLogPage(p)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${logPage === p ? 'bg-teal-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        {p}
+                      </button>
+                    ))}
+                  <button onClick={() => setLogPage(p => Math.min(logTotalPages, p+1))} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                  <button onClick={() => setLogPage(logTotalPages)} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
+                </div>
+              </div>
+              {/* 로그 카드 목록 */}
+              <div className="space-y-3">
+                {pagedStockLogs.map(log => renderLogCard(log))}
+              </div>
+            </>
           )}
 
         </div>
@@ -3217,7 +3254,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
                     <Search size={14} className="text-slate-400" />
-                    <input type="text" value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                    <input type="text" value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(1); }}
                       placeholder="상품명, 라벨명 검색"
                       className="text-sm outline-none w-44 text-slate-700 placeholder-slate-400" />
                   </div>

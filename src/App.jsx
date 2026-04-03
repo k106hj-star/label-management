@@ -1135,7 +1135,7 @@ export default function App() {
   const [calcOrdererMode, setCalcOrdererMode] = useState('select');
   const ORDERER_LIST = ['천영균', '이형주', '장경환', '선호준', '양동준'];
   const [calcNote, setCalcNote] = useState('');
-  const [calcMfgDate, setCalcMfgDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`; });
+  const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
   const [calcRnNumber, setCalcRnNumber] = useState('');
   const [calcRnMode, setCalcRnMode] = useState('select');
   const RN_LIST = [
@@ -2009,7 +2009,7 @@ export default function App() {
                           : products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).map(p => (
                             <li
                               key={p.id}
-                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); const _d = new Date(); setCalcMfgDate(`${_d.getFullYear()}.${String(_d.getMonth()+1).padStart(2,'0')}`); setCalcRnNumber(''); }}
+                              onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); setCalcMfgDate(`${new Date().getFullYear()}.`); setCalcRnNumber(''); }}
                               className={`px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 ${String(p.id) === calcTarget ? 'bg-emerald-100 font-medium' : ''}`}
                             >
                               [{p.brand}] {p.name}

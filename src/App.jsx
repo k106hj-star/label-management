@@ -1137,6 +1137,18 @@ export default function App() {
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => { const d = new Date(); return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}`; });
   const [calcRnNumber, setCalcRnNumber] = useState('');
+  const [calcRnMode, setCalcRnMode] = useState('select');
+  const RN_LIST = [
+    { rn: 'RN#1487', factory: '성진' }, { rn: 'RN#1633', factory: '동원' }, { rn: 'RN#2527', factory: 'JB(2DAY텍스)' },
+    { rn: 'RN#3084', factory: 'KC' }, { rn: 'RN#5786', factory: '에스앤비' }, { rn: 'RN#6573', factory: '인앤코' },
+    { rn: 'RN#9001', factory: '태원' }, { rn: 'RN#A630', factory: '고은사' }, { rn: 'RN#A710', factory: '실니트' },
+    { rn: 'RN#A969', factory: '두성' }, { rn: 'RN#B523', factory: '이화사' }, { rn: 'RN#C202', factory: '다송사' },
+    { rn: 'RN#C375', factory: '정한' }, { rn: 'RN#C450', factory: '서윤' }, { rn: 'RN#C825', factory: '다산' },
+    { rn: 'RN#D160', factory: '로로팝' }, { rn: 'RN#D777', factory: '베스트' }, { rn: 'RN#D900', factory: '써머' },
+    { rn: 'RN#DM157', factory: '동명' }, { rn: 'RN#E800', factory: '흥신' }, { rn: 'RN#E180', factory: '탱크' },
+    { rn: 'RN#K-87', factory: '케이소싱' }, { rn: 'RN#CH001', factory: '이건(프로모션)' }, { rn: 'RN#CAP01', factory: '알에스비' },
+    { rn: 'RN#DM159', factory: '에스에이알(동명)' },
+  ];
 
   const calcColorList = calcColorText.split(',').map(s => s.trim()).filter(Boolean);
   const calcSizeList = calcSizeText.split(',').map(s => s.trim()).filter(Boolean);
@@ -2063,7 +2075,25 @@ export default function App() {
                       </div>
                       <div>
                         <label className="block text-xs text-slate-600 mb-1 font-medium">RN넘버</label>
-                        <input type="text" value={calcRnNumber} onChange={e => setCalcRnNumber(e.target.value)} placeholder="RN넘버 입력" className="w-full p-2 border border-amber-200 rounded bg-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                        {calcRnMode === 'select' ? (
+                          <select
+                            value={calcRnNumber}
+                            onChange={e => {
+                              if (e.target.value === '__direct__') { setCalcRnMode('direct'); setCalcRnNumber(''); }
+                              else setCalcRnNumber(e.target.value);
+                            }}
+                            className="w-full p-2 border border-amber-200 rounded bg-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          >
+                            <option value="">-- 선택 --</option>
+                            {RN_LIST.map(item => <option key={item.rn} value={item.rn}>{item.rn} — {item.factory}</option>)}
+                            <option value="__direct__">✏️ 직접입력</option>
+                          </select>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input type="text" value={calcRnNumber} onChange={e => setCalcRnNumber(e.target.value)} placeholder="RN넘버 직접 입력" autoFocus className="flex-1 p-2 border border-amber-200 rounded bg-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                            <button onClick={() => { setCalcRnMode('select'); setCalcRnNumber(''); }} className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded hover:bg-slate-50">목록</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

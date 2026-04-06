@@ -1255,17 +1255,32 @@ export default function App() {
 
       let isFirstPage = true;
 
+      // 품번 범위 압축: ['JMSL001-2','JMSL001-3','JMSL001-4','JMSL001-5'] → 'JMSL001-2~5'
+      const condenseCodeRange = (codes) => {
+        const unique = [...new Set(codes.filter(Boolean))].sort();
+        if (unique.length === 0) return '-';
+        if (unique.length === 1) return unique[0];
+        const first = unique[0];
+        const last = unique[unique.length - 1];
+        let i = 0;
+        while (i < first.length && i < last.length && first[i] === last[i]) i++;
+        if (i > 0 && i < first.length) {
+          return `${first.substring(0, i)}${first.substring(i)}~${last.substring(i)}`;
+        }
+        return unique.join(', ');
+      };
+
       for (const [vendor, items] of Object.entries(groups)) {
-        // ── 이미지 병렬 프리로드 ──
-        const uniqueItems = [...new Map(items.map(item => [item.name + '||' + (item.code || ''), item])).values()];
+        // ── 이미지 병렬 프리로드 (라벨명 기준 중복 제거) ──
+        const uniqueItems = [...new Map(items.map(item => [item.name, item])).values()];
         const imgResults = await Promise.all(uniqueItems.map(item => item.img ? loadImageBase64(item.img) : Promise.resolve(null)));
         const imgCache = {};
-        uniqueItems.forEach((item, i) => { imgCache[item.name + '||' + (item.code || '')] = imgResults[i]; });
+        uniqueItems.forEach((item, i) => { imgCache[item.name] = imgResults[i]; });
 
-        // ── 라벨명 기준 그룹 ──
+        // ── 라벨명 기준 그룹 (name만으로 묶기, 품번 다른 것도 합산) ──
         const nameGroupMap = new Map();
         items.forEach(item => {
-          const key = item.name + '||' + (item.code || '');
+          const key = item.name;
           if (!nameGroupMap.has(key)) nameGroupMap.set(key, []);
           nameGroupMap.get(key).push(item);
         });
@@ -1279,7 +1294,8 @@ export default function App() {
           const n = groupItems.length;
           const first = groupItems[0];
           const isCare = first.type === '케어라벨';
-          const imgB64 = imgCache[key] || null;
+          const imgB64 = imgCache[first.name] || null;
+          const codeRange = condenseCodeRange(groupItems.map(item => item.code));
           const rowBg = isCare ? 'background:#ffff00;' : '';
 
           let labelHtml = `<strong>${first.name}</strong>`;
@@ -1304,7 +1320,7 @@ export default function App() {
                 <td rowspan="${n}" style="${centerCell}">${calcOrderer || '-'}</td>
                 <td rowspan="${n}" style="${centerCell}">${calcFactory || '-'}</td>
                 <td rowspan="${n}" style="${cellStyle}">${labelHtml}</td>
-                <td rowspan="${n}" style="${centerCell}">${first.code || '-'}</td>
+                <td rowspan="${n}" style="${centerCell}">${codeRange}</td>
                 <td rowspan="${n}" style="${centerCell}padding:4px;">${imgHtml}</td>
                 <td rowspan="${n}" style="${cellStyle}font-size:10px;">${calcSearchText || '-'}</td>
                 <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
@@ -1332,12 +1348,12 @@ export default function App() {
             <thead>
               <tr style="background:#333;color:white;font-size:12px;">
                 <th style="padding:8px;text-align:center;border:1px solid #555;">작성일</th>
-                <th style="padding:8px;text-align:center;border:1px solid #555;">발주자</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">발주</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">입고처</th>
-                <th style="padding:8px;text-align:center;border:1px solid #555;">라벨명</th>
-                <th style="padding:8px;text-align:center;border:1px solid #555;">Style No</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">아이템</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">품번</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">이미지</th>
-                <th style="padding:8px;text-align:center;border:1px solid #555;">상품명</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">품명/품번</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">size</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">수량</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">비고</th>

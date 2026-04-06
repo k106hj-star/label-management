@@ -1232,20 +1232,21 @@ export default function App() {
         }
       });
 
-      // 이미지 → base64
-      const loadImageBase64 = (url) => new Promise((resolve) => {
-        if (!url) return resolve(null);
-        const img = new window.Image();
-        img.crossOrigin = 'Anonymous';
-        img.onload = () => {
-          const c = document.createElement('canvas');
-          c.width = img.naturalWidth; c.height = img.naturalHeight;
-          c.getContext('2d').drawImage(img, 0, 0);
-          resolve(c.toDataURL('image/jpeg', 0.85));
-        };
-        img.onerror = () => resolve(null);
-        img.src = url;
-      });
+      // 이미지 → base64 (fetch 방식 - Firebase Storage CORS 우회)
+      const loadImageBase64 = async (url) => {
+        if (!url) return null;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) return null;
+          const blob = await res.blob();
+          return await new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) { return null; }
+      };
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const PAGE_W = doc.internal.pageSize.width;   // 297mm
@@ -1255,12 +1256,11 @@ export default function App() {
       let isFirstPage = true;
 
       for (const [vendor, items] of Object.entries(groups)) {
-        // ── 이미지 프리로드 ──
+        // ── 이미지 병렬 프리로드 ──
+        const uniqueItems = [...new Map(items.map(item => [item.name + '||' + (item.code || ''), item])).values()];
+        const imgResults = await Promise.all(uniqueItems.map(item => item.img ? loadImageBase64(item.img) : Promise.resolve(null)));
         const imgCache = {};
-        for (const item of items) {
-          const key = item.name + '||' + (item.code || '');
-          if (item.img && !imgCache[key]) imgCache[key] = await loadImageBase64(item.img);
-        }
+        uniqueItems.forEach((item, i) => { imgCache[item.name + '||' + (item.code || '')] = imgResults[i]; });
 
         // ── 라벨명 기준 그룹 ──
         const nameGroupMap = new Map();
@@ -1362,20 +1362,12 @@ export default function App() {
         ));
 
         const canvas = await html2canvas(wrapper.firstChild, {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
+          scale: 1.5,
+          useCORS: false,
+          allowTaint: false,
           logging: false,
           backgroundColor: '#ffffff',
-          imageTimeout: 15000,
-          onclone: (clonedDoc) => {
-            // 클론된 DOM의 img도 로드 대기
-            return Promise.all(
-              Array.from(clonedDoc.querySelectorAll('img')).map(img =>
-                img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })
-              )
-            );
-          }
+          imageTimeout: 0,
         });
         document.body.removeChild(wrapper);
 

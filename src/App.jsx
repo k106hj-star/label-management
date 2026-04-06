@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { db, storage } from './firebase';
+import { db, storage, auth } from './firebase';
+import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -336,7 +337,7 @@ const initialProducts = [
 // 데이터 버전 (CSV 데이터 업데이트 시 증가)
 const DATA_VERSION = 2;
 
-export default function App() {
+export default function App({ user }) {
   const [activeTab, setActiveTab] = useState('inventory');
   const [lowStockExpanded, setLowStockExpanded] = useState(false);
   const [navExpanded, setNavExpanded] = useState(true);
@@ -1696,6 +1697,27 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        {/* 사용자 정보 + 로그아웃 */}
+        <div className={`border-t border-slate-100 p-2 ${navExpanded ? '' : 'flex justify-center'}`}>
+          {navExpanded ? (
+            <div className="flex items-center gap-2 px-2 py-2">
+              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-xs font-bold text-slate-600">
+                {user?.email?.[0]?.toUpperCase() || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-slate-700 truncate">{user?.email?.split('@')[0] || ''}</p>
+                <button onClick={() => signOut(auth)} className="text-xs text-slate-400 hover:text-red-500 transition-colors">로그아웃</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => signOut(auth)} title="로그아웃" className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </button>
+          )}
+        </div>
       </aside>
 
       {/* 메인 컨텐츠 */}

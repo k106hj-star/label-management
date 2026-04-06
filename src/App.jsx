@@ -1255,6 +1255,12 @@ export default function App() {
 
       let isFirstPage = true;
 
+      // 품번 앞자리(베이스) 추출: 'JMSL001-2' → 'JMSL001', 'JMHT001' → 'JMHT001'
+      const getCodeBase = (code) => {
+        if (!code) return '_no_code_';
+        const m = code.match(/^(.*)-(\d+)$/);
+        return m ? m[1] : code;
+      };
       // 품번 범위 압축: ['JMSL001-2','JMSL001-3','JMSL001-4','JMSL001-5'] → 'JMSL001-2~5'
       const condenseCodeRange = (codes) => {
         const unique = [...new Set(codes.filter(Boolean))].sort();
@@ -1271,16 +1277,19 @@ export default function App() {
       };
 
       for (const [vendor, items] of Object.entries(groups)) {
-        // ── 이미지 병렬 프리로드 (라벨명 기준 중복 제거) ──
-        const uniqueItems = [...new Map(items.map(item => [item.name, item])).values()];
+        // ── 그룹핑 키: 라벨명 + 품번 앞자리(베이스) ──
+        const groupKey = (item) => item.name + '||' + getCodeBase(item.code);
+
+        // ── 이미지 병렬 프리로드 (그룹 기준 중복 제거) ──
+        const uniqueItems = [...new Map(items.map(item => [groupKey(item), item])).values()];
         const imgResults = await Promise.all(uniqueItems.map(item => item.img ? loadImageBase64(item.img) : Promise.resolve(null)));
         const imgCache = {};
-        uniqueItems.forEach((item, i) => { imgCache[item.name] = imgResults[i]; });
+        uniqueItems.forEach((item, i) => { imgCache[groupKey(item)] = imgResults[i]; });
 
-        // ── 라벨명 기준 그룹 (name만으로 묶기, 품번 다른 것도 합산) ──
+        // ── 품번 앞자리 동일 → 한 그룹으로 묶기 ──
         const nameGroupMap = new Map();
         items.forEach(item => {
-          const key = item.name;
+          const key = groupKey(item);
           if (!nameGroupMap.has(key)) nameGroupMap.set(key, []);
           nameGroupMap.get(key).push(item);
         });
@@ -1294,7 +1303,7 @@ export default function App() {
           const n = groupItems.length;
           const first = groupItems[0];
           const isCare = first.type === '케어라벨';
-          const imgB64 = imgCache[first.name] || null;
+          const imgB64 = imgCache[key] || null;
           const codeRange = condenseCodeRange(groupItems.map(item => item.code));
           const rowBg = isCare ? 'background:#ffff00;' : '';
 

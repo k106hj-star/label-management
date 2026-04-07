@@ -2625,8 +2625,8 @@ export default function App({ user }) {
                                     {(item.availableStock ?? item.stock ?? 0).toLocaleString()}
                                   </td>
                                   <td className="p-3 text-right font-bold">
-                                    <span className={item.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>
-                                      {item.shortage.toLocaleString()}개
+                                    <span className={item.shortage > 0 ? 'text-red-600' : 'text-slate-300'}>
+                                      {item.needQty.toLocaleString()}개
                                     </span>
                                   </td>
                                   <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{calcNote || '-'}</td>

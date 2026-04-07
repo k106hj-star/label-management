@@ -972,20 +972,41 @@ export default function App({ user }) {
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsOrders = ordersSnap.data()?.list || [];
         const fsLabels = labelsSnap.data()?.list || [];
+
+        // ── 로컬 데이터를 기준으로 병합 (Firestore에 없는 항목 보존) ──
+        const localOrders = JSON.parse(localStorage.getItem('label_saved_orders') || '[]');
+        const mergedOrders = [...localOrders];
+        fsOrders.forEach(fo => {
+          const idx = mergedOrders.findIndex(o => o.id === fo.id);
+          if (idx === -1) mergedOrders.push(fo);
+          else mergedOrders[idx] = { ...fo, ...mergedOrders[idx],
+            applied: mergedOrders[idx].applied || fo.applied,
+            appliedAt: mergedOrders[idx].appliedAt || fo.appliedAt };
+        });
+
+        const localLabels = JSON.parse(localStorage.getItem('label_inventory') || '[]');
+        const mergedLabels = localLabels.map(ll => {
+          const fl = fsLabels.find(f => f.id === ll.id);
+          // Firestore stock이 더 최신 (다른 사용자가 차감했을 수 있음)
+          return fl ? { ...ll, stock: fl.stock } : ll;
+        });
+        fsLabels.forEach(fl => { if (!mergedLabels.find(l => l.id === fl.id)) mergedLabels.push(fl); });
+
         // 이미 다른 사용자가 확정했는지 체크
-        const fsOrder = fsOrders.find(o => o.id === order.id);
-        if (fsOrder?.applied) throw new Error('already_applied');
+        const targetOrder = mergedOrders.find(o => o.id === order.id);
+        if (targetOrder?.applied) throw new Error('already_applied');
+
         // 재고 차감
         logItems = orderItems.map(d => {
-          const lbl = fsLabels.find(l => l.id === d.id);
+          const lbl = mergedLabels.find(l => l.id === d.id);
           const before = lbl ? lbl.stock : 0;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
         });
-        const updatedLabels = fsLabels.map(lbl => {
+        const updatedLabels = mergedLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
           return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
         });
-        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
+        const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
         tx.set(doc(db, 'settings', 'labels'), { list: updatedLabels });
         tx.set(doc(db, 'settings', 'savedOrders'), { list: updatedOrders });
       });

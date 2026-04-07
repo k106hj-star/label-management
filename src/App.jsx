@@ -2206,7 +2206,7 @@ export default function App({ user }) {
                       <label className="block text-xs font-medium text-slate-600 mb-1">브랜드</label>
                       <select value={bulkEditFields.brand} onChange={e => setBulkEditFields(p => ({ ...p, brand: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm">
                         <option value="">변경 안 함</option>
-                        {['WV','JM','EZ','FP','공용'].map(b => <option key={b} value={b}>{b}</option>)}
+                        {brandList.filter(b => b !== '전체').map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
                     </div>
                     <div>
@@ -2259,11 +2259,7 @@ export default function App({ user }) {
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">브랜드</label>
                       <select value={newLabel.brand} onChange={e => setNewLabel({ ...newLabel, brand: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
-                        <option value="WV">WV</option>
-                        <option value="JM">JM</option>
-                        <option value="EZ">EZ</option>
-                        <option value="FP">FP</option>
-                        <option value="공용">공용</option>
+                        {brandList.filter(b => b !== '전체').map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
                     </div>
                     <div>
@@ -3324,11 +3320,7 @@ export default function App({ user }) {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">브랜드</label>
                 <select value={editProduct.brand || '공용'} onChange={e => setEditProduct({ ...editProduct, brand: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
-                  <option value="WV">WV</option>
-                  <option value="JM">JM</option>
-                  <option value="EZ">EZ</option>
-                  <option value="FP">FP</option>
-                  <option value="공용">공용</option>
+                  {brandList.filter(b => b !== '전체').map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
               <div>
@@ -3434,11 +3426,7 @@ export default function App({ user }) {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">브랜드</label>
                 <select value={editLabel.brand} onChange={e => setEditLabel({ ...editLabel, brand: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
-                  <option value="WV">WV</option>
-                  <option value="JM">JM</option>
-                  <option value="EZ">EZ</option>
-                  <option value="FP">FP</option>
-                  <option value="공용">공용</option>
+                  {brandList.filter(b => b !== '전체').map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
               <div>

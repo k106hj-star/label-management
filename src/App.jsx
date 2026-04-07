@@ -1007,8 +1007,11 @@ export default function App({ user }) {
           return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
         });
         const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
-        tx.set(doc(db, 'settings', 'labels'), { list: updatedLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: updatedOrders });
+        // undefined 값 제거 후 Firestore에 저장 (undefined는 Firestore 미지원)
+        const cleanLabels = JSON.parse(JSON.stringify(updatedLabels));
+        const cleanOrders = JSON.parse(JSON.stringify(updatedOrders));
+        tx.set(doc(db, 'settings', 'labels'), { list: cleanLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: cleanOrders });
       });
       // 트랜잭션 성공 → 로컬 상태 업데이트
       setLabels(prev => prev.map(lbl => {
@@ -1071,8 +1074,10 @@ export default function App({ user }) {
           return matched ? { ...lbl, stock: lbl.stock + matched.shortage } : lbl;
         });
         const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
-        tx.set(doc(db, 'settings', 'labels'), { list: updatedLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: updatedOrders });
+        const cleanLabels = JSON.parse(JSON.stringify(updatedLabels));
+        const cleanOrders = JSON.parse(JSON.stringify(updatedOrders));
+        tx.set(doc(db, 'settings', 'labels'), { list: cleanLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: cleanOrders });
       });
       // 트랜잭션 성공 → 로컬 상태 업데이트
       setLabels(prev => prev.map(label => {

@@ -797,9 +797,9 @@ export default function App({ user }) {
   const deleteLabel = (id) => {
     if (window.confirm('정말 삭제하시겠습니까?')) {
       const label = labels.find(l => l.id === id);
-      setLabels(labels.filter(l => l.id !== id));
+      setLabels(prev => prev.filter(l => l.id !== id));
       if (label) addLog({ type: 'delete', labelId: id, labelName: label.name, labelCode: label.code, labelBrand: label.brand, summary: `라벨 삭제: ${label.name} (${label.code})` });
-      setProducts(products.map(p => ({
+      setProducts(prev => prev.map(p => ({
         ...p,
         bom: p.bom.filter(b => b.labelId !== id)
       })));
@@ -1025,33 +1025,70 @@ export default function App({ user }) {
     }
   };
 
-  const cancelOrderFromStock = (order) => {
+  const cancelOrderFromStock = async (order) => {
     if (!order.applied) return;
     const orderItems = (order.details || []).filter(d => d.shortage > 0);
     if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 재고 수량이 원복됩니다.`)) return;
-    const logItems = orderItems.map(d => {
-      const label = labels.find(l => l.id === d.id);
-      const before = label ? label.stock : 0;
-      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: +d.shortage, after: before + d.shortage };
-    });
-    setLabels(prev => prev.map(label => {
-      const matched = orderItems.find(d => d.id === label.id);
-      if (matched) return { ...label, stock: label.stock + matched.shortage };
-      return label;
-    }));
-    setSavedOrders(prev => {
-      const updated = prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
-      try { setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(updated)) }).catch(() => {}); } catch(e) {}
-      try { localStorage.setItem('label_saved_orders', JSON.stringify(updated)); } catch(e) {}
-      return updated;
-    });
-    if (viewOrder?.id === order.id) {
-      setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
-    }
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';
-    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
-    alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
+    try {
+      let logItems = [];
+      await runTransaction(db, async (tx) => {
+        const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
+        const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
+        const fsOrders = ordersSnap.data()?.list || [];
+        const fsLabels = labelsSnap.data()?.list || [];
+
+        // 로컬 + Firestore 병합
+        const localOrders = JSON.parse(localStorage.getItem('label_saved_orders') || '[]');
+        const mergedOrders = [...localOrders];
+        fsOrders.forEach(fo => {
+          const idx = mergedOrders.findIndex(o => o.id === fo.id);
+          if (idx === -1) mergedOrders.push(fo);
+          else mergedOrders[idx] = { ...fo, ...mergedOrders[idx],
+            applied: mergedOrders[idx].applied || fo.applied,
+            appliedAt: mergedOrders[idx].appliedAt || fo.appliedAt };
+        });
+
+        const localLabels = JSON.parse(localStorage.getItem('label_inventory') || '[]');
+        const mergedLabels = localLabels.map(ll => {
+          const fl = fsLabels.find(f => f.id === ll.id);
+          return fl ? { ...ll, stock: fl.stock } : ll;
+        });
+        fsLabels.forEach(fl => { if (!mergedLabels.find(l => l.id === fl.id)) mergedLabels.push(fl); });
+
+        // 이미 취소됐는지 체크
+        const targetOrder = mergedOrders.find(o => o.id === order.id);
+        if (targetOrder && !targetOrder.applied) throw new Error('already_cancelled');
+
+        logItems = orderItems.map(d => {
+          const lbl = mergedLabels.find(l => l.id === d.id);
+          const before = lbl ? lbl.stock : 0;
+          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: +d.shortage, after: before + d.shortage };
+        });
+        const updatedLabels = mergedLabels.map(lbl => {
+          const matched = orderItems.find(d => d.id === lbl.id);
+          return matched ? { ...lbl, stock: lbl.stock + matched.shortage } : lbl;
+        });
+        const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
+        tx.set(doc(db, 'settings', 'labels'), { list: updatedLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: updatedOrders });
+      });
+      // 트랜잭션 성공 → 로컬 상태 업데이트
+      setLabels(prev => prev.map(label => {
+        const matched = orderItems.find(d => d.id === label.id);
+        return matched ? { ...label, stock: label.stock + matched.shortage } : label;
+      }));
+      setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o));
+      if (viewOrder?.id === order.id) {
+        setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
+      }
+      setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
+      alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
+    } catch(e) {
+      if (e.message === 'already_cancelled') alert('이미 취소된 발주입니다. 새로고침 후 확인하세요.');
+      else alert('취소 처리 중 오류가 발생했습니다: ' + e.message);
+    }
   };
 
   // --- SavedOrders 실시간 동기화 (onSnapshot) ---
@@ -2056,7 +2093,7 @@ export default function App({ user }) {
                               const file = e.target.files[0];
                               if (file) {
                                 const url = await uploadToStorage(file);
-                                addToLabelImageFolder(l.name, url, file);
+                                addToLabelImageFolder(l.name, url, file, l.code);
                                 setLabels(prev => prev.map(item => item.id === l.id ? { ...item, img: url } : item));
                                 addLog({ type: 'image_update', labelId: l.id, labelName: l.name, labelCode: l.code, summary: `이미지 업데이트: ${l.name} (${l.code})` });
                               }
@@ -2412,7 +2449,7 @@ export default function App({ user }) {
                       {selectedProduct.bom.map((item, idx) => {
                         const label = labels.find(l => l.id === item.labelId);
                         if (!label) return null;
-                        const isCareLabel = label.name.includes('케어라벨');
+                        const isCareLabel = label.type === '케어라벨' || label.name.includes('케어라벨');
                         return (
                           <React.Fragment key={item.labelId}>
                             <tr
@@ -2927,7 +2964,7 @@ export default function App({ user }) {
                                 <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', mfgDate: order.mfgDate || '', rnNumber: order.rnNumber || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                   <Pencil size={14} /> 수정
                                 </button>
-                                <button onClick={() => { setOpenOrderMenuId(null); addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` }); setSavedOrders(prev => prev.filter((_, i) => i !== idx)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
+                                <button onClick={() => { setOpenOrderMenuId(null); addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` }); setSavedOrders(prev => prev.filter(o => o.id !== order.id)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
                                   <Trash2 size={14} /> 삭제
                                 </button>
                               </div>
@@ -3365,7 +3402,7 @@ export default function App({ user }) {
                             <td className="p-2 text-slate-700">{log.productName || '-'}</td>
                             <td className="p-2 text-right font-medium">
                               <span className={log.type === 'deduct' ? 'text-orange-600' : 'text-blue-600'}>
-                                {log.type === 'deduct' ? '-' : '+'}{item?.change ?? 0}
+                                {log.type === 'deduct' ? '-' : '+'}{Math.abs(item?.change ?? 0).toLocaleString()}
                               </span>
                             </td>
                             <td className="p-2 text-center">

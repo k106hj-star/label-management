@@ -349,11 +349,9 @@ export default function App({ user }) {
   // Firestore에서 관리자 여부 확인
   useEffect(() => {
     if (!user?.uid) return;
-    import('firebase/firestore').then(({ getDoc: gd, doc: d }) => {
-      gd(d(db, 'users', user.uid)).then(snap => {
-        if (snap.exists()) setIsAdmin(!!snap.data().isAdmin);
-      });
-    });
+    getDoc(doc(db, 'users', user.uid)).then(snap => {
+      if (snap.exists()) setIsAdmin(!!snap.data().isAdmin);
+    }).catch(() => {});
   }, [user?.uid]);
 
   const [labels, setLabels] = useState(() => {

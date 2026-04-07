@@ -3239,6 +3239,7 @@ export default function App({ user }) {
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 text-xs">
                         <th className="p-2 text-left font-medium">발주날짜</th>
+                        <th className="p-2 text-left font-medium">사용자</th>
                         <th className="p-2 text-left font-medium">공장명</th>
                         <th className="p-2 text-left font-medium">상품명</th>
                         <th className="p-2 text-right font-medium">수량</th>
@@ -3254,6 +3255,11 @@ export default function App({ user }) {
                         return (
                           <tr key={log.id} className="hover:bg-slate-50">
                             <td className="p-2 text-slate-600 whitespace-nowrap">{log.date}</td>
+                            <td className="p-2 text-slate-700 whitespace-nowrap">
+                              {log.userName && <div className="font-medium">{log.userName}</div>}
+                              {log.userId && <div className="text-xs text-slate-400">{log.userId}</div>}
+                              {!log.userName && !log.userId && <span className="text-slate-300">-</span>}
+                            </td>
                             <td className="p-2 text-slate-700">{log.factory || '-'}</td>
                             <td className="p-2 text-slate-700">{log.productName || '-'}</td>
                             <td className="p-2 text-right font-medium">

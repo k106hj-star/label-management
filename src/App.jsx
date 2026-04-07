@@ -1586,7 +1586,7 @@ export default function App({ user }) {
                 <th className="text-right pb-1.5 font-medium">변경 후</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {log.items.map((item, i) => (
+                {(log.items || []).map((item, i) => (
                   <tr key={i} className="hover:bg-white/60">
                     <td className="py-1.5 text-slate-700 font-medium pr-4">{item.labelName}</td>
                     <td className="py-1.5 text-center text-slate-500">{item.size}</td>
@@ -3208,7 +3208,7 @@ export default function App({ user }) {
 
       {/* 라벨 발주 로그 모달 */}
       {labelLogModal && (() => {
-        const labelLogs = stockLogs.filter(log => log.items.some(item => item.labelId === labelLogModal.id));
+        const labelLogs = stockLogs.filter(log => log.items?.some(item => item.labelId === labelLogModal.id));
         return (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setLabelLogModal(null)}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6" onClick={e => e.stopPropagation()}>
@@ -3241,7 +3241,7 @@ export default function App({ user }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {labelLogs.map(log => {
-                        const item = log.items.find(i => i.labelId === labelLogModal.id);
+                        const item = log.items?.find(i => i.labelId === labelLogModal.id);
                         return (
                           <tr key={log.id} className="hover:bg-slate-50">
                             <td className="p-2 text-slate-600 whitespace-nowrap">{log.date}</td>

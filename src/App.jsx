@@ -1459,7 +1459,6 @@ export default function App({ user }) {
           logging: false,
           backgroundColor: '#ffffff',
           imageTimeout: 0,
-          foreignObjectRendering: true,
         });
         document.body.removeChild(wrapper);
 

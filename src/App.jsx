@@ -2622,10 +2622,10 @@ export default function App({ user }) {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {items.map((item, idx) => (
-                                <tr key={idx} className={item.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50 opacity-40'}>
-                                  <td className="p-3 text-slate-400 whitespace-nowrap">{todayStr}</td>
-                                  <td className="p-3 text-slate-700">{calcOrderer || '-'}</td>
-                                  <td className="p-3 text-slate-700">{calcFactory || '-'}</td>
+                                <tr key={idx} className={item.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50'}>
+                                  <td className="p-3 text-slate-500 whitespace-nowrap">{todayStr}</td>
+                                  <td className="p-3 text-slate-800">{calcOrderer || '-'}</td>
+                                  <td className="p-3 text-slate-800">{calcFactory || '-'}</td>
                                   <td className="p-3 cursor-pointer hover:text-indigo-600 group" onClick={() => { const l = labels.find(lb => lb.id === item.id); if (l) setCalcLabelPopup(l); }}>
                                     <div className="font-medium text-slate-800 group-hover:text-indigo-600 group-hover:underline transition-colors">{item.name}</div>
                                     <div className="text-xs text-slate-400">{item.code}</div>
@@ -2644,9 +2644,9 @@ export default function App({ user }) {
                                       : <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center"><ImageIcon size={14} className="text-slate-300" /></div>
                                     }
                                   </td>
-                                  <td className="p-3 text-slate-700 whitespace-nowrap">{calcSearchText || '-'}</td>
-                                  <td className="p-3 text-center text-slate-700 text-base font-bold">{item.size || '-'}</td>
-                                  <td className="p-3 text-right text-slate-500">
+                                  <td className="p-3 text-slate-800 whitespace-nowrap">{calcSearchText || '-'}</td>
+                                  <td className="p-3 text-center text-slate-800 text-base font-bold">{item.size || '-'}</td>
+                                  <td className="p-3 text-right text-slate-600">
                                     <div>
                                       <div>{(item.stock ?? 0).toLocaleString()}</div>
                                       {(item.reserveStock ?? 0) > 0 && (
@@ -2658,7 +2658,7 @@ export default function App({ user }) {
                                     {(item.availableStock ?? item.stock ?? 0).toLocaleString()}
                                   </td>
                                   <td className="p-3 text-right font-bold">
-                                    <span className={item.shortage > 0 ? 'text-red-600' : 'text-slate-300'}>
+                                    <span className={item.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>
                                       {item.needQty.toLocaleString()}개
                                     </span>
                                   </td>

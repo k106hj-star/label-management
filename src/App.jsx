@@ -435,7 +435,21 @@ export default function App({ user }) {
     } catch(e) {}
   }, [labels]);
 
-  // Products Firestore 동기화 (항상 Firestore 최신 로드)
+  // ── Products 저장 헬퍼: localStorage + Firestore + Firebase Storage 동시 저장 ──
+  const saveProductsEverywhere = (data) => {
+    try { localStorage.setItem('label_products', JSON.stringify(data)); } catch(e) {}
+    try {
+      const clean = JSON.parse(JSON.stringify(data));
+      // Firestore 저장
+      setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch(() => {});
+      // Firebase Storage 백업 (products-backup.json)
+      const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+      const backupRef = ref(storage, 'backups/products-backup.json');
+      uploadBytes(backupRef, jsonBlob).catch(() => {});
+    } catch(e) {}
+  };
+
+  // Products Firestore 동기화: 로컬과 Firestore를 BOM 단위로 안전하게 병합
   const firestoreLoaded = useRef(false);
   const productsCanSave = useRef(false);
   useEffect(() => {
@@ -444,34 +458,49 @@ export default function App({ user }) {
     getDoc(doc(db, 'settings', 'products')).then(snap => {
       const localRaw = localStorage.getItem('label_products');
       const localData = localRaw ? JSON.parse(localRaw) : [];
-      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const fsData = snap.data().list;
-        // Firestore + 로컬 병합: 양쪽의 상품을 id 기준으로 합침
-        const merged = [...fsData];
-        localData.forEach(lp => {
-          if (!merged.find(fp => fp.id === lp.id)) merged.push(lp);
+      const fsData = (snap.exists() && Array.isArray(snap.data()?.list)) ? snap.data().list : [];
+
+      // 로컬 데이터를 기준으로 Firestore 데이터와 BOM 병합
+      // - 같은 id의 상품이 있으면: BOM 항목을 합집합으로 병합 (로컬 우선)
+      // - 로컬에 없는 상품만 Firestore에서 추가
+      const merged = localData.map(lp => {
+        const fp = fsData.find(f => f.id === lp.id);
+        if (!fp) return lp;
+        // BOM 병합: 로컬 BOM + Firestore에만 있는 항목 추가
+        const localBom = lp.bom || [];
+        const fsBom = fp.bom || [];
+        const mergedBom = [...localBom];
+        fsBom.forEach(fb => {
+          if (!mergedBom.find(lb => lb.labelId === fb.labelId)) mergedBom.push(fb);
         });
-        setProducts(merged);
-        localStorage.setItem('label_products', JSON.stringify(merged));
-        // 병합된 결과로 Firestore 업데이트
-        setDoc(doc(db, 'settings', 'products'), { list: JSON.parse(JSON.stringify(merged)) }).catch(() => {});
-      } else if (localData.length > 0) {
-        try {
-          const clean = JSON.parse(JSON.stringify(localData));
-          setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
-        } catch(e) {}
-      }
+        // BOM 개수가 많은 쪽을 우선 사용하되 병합 결과 적용
+        return { ...lp, bom: mergedBom };
+      });
+      // Firestore에만 있는 상품 추가
+      fsData.forEach(fp => {
+        if (!merged.find(m => m.id === fp.id)) merged.push(fp);
+      });
+
+      setProducts(merged);
+      localStorage.setItem('label_products', JSON.stringify(merged));
+      // 병합 결과를 Firestore + Storage에 저장
+      try {
+        const clean = JSON.parse(JSON.stringify(merged));
+        setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch(() => {});
+        const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+        uploadBytes(ref(storage, 'backups/products-backup.json'), jsonBlob).catch(() => {});
+      } catch(e) {}
     }).catch(() => {}).finally(() => { productsCanSave.current = true; });
   }, []);
 
-  // localStorage는 항상 저장, Firestore는 로드 완료 후만
+  // products 변경 시 localStorage + Firestore + Storage에 즉시 저장
   useEffect(() => {
-    try { localStorage.setItem('label_products', JSON.stringify(products)); } catch(e) {}
-    if (!productsCanSave.current) return;
-    try {
-      const clean = JSON.parse(JSON.stringify(products));
-      setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
-    } catch(e) {}
+    if (!productsCanSave.current) {
+      // Firestore 로드 전이라도 localStorage에는 저장
+      try { localStorage.setItem('label_products', JSON.stringify(products)); } catch(e) {}
+      return;
+    }
+    saveProductsEverywhere(products);
   }, [products]);
 
   // 이미지 미리보기 모달 상태
@@ -832,6 +861,8 @@ export default function App({ user }) {
     });
     setProducts(updatedProducts);
     setSelectedProduct(updatedProducts.find(p => p.id === selectedProduct.id));
+    // 즉시 저장 (타이밍 문제 방지)
+    saveProductsEverywhere(updatedProducts);
     if (addedLabelIds.length > 0) {
       const addedLabelNames = addedLabelIds.map(id => { const l = labels.find(lb => lb.id === id); return l ? `${l.name} (${l.size || '-'})` : String(id); });
       addLog({ type: 'bom_add', productName: selectedProduct.name, labelNames: addedLabelNames, qty: parseInt(bomSelection.qty), summary: `BOM 라벨 추가: ${selectedProduct.name} +${addedLabelIds.length}종` });
@@ -849,6 +880,7 @@ export default function App({ user }) {
       return p;
     });
     setProducts(updatedProducts);
+    saveProductsEverywhere(updatedProducts);
     if (prod && removedLabel) {
       addLog({ type: 'bom_remove', productName: prod.name, labelNames: [`${removedLabel.name} (${removedLabel.size || '-'})`], summary: `BOM 라벨 제거: ${prod.name} - ${removedLabel.name}` });
     }
@@ -869,6 +901,7 @@ export default function App({ user }) {
       return p;
     });
     setProducts(updatedProducts);
+    saveProductsEverywhere(updatedProducts);
     if (selectedProduct && selectedProduct.id === prodId) {
       setSelectedProduct(updatedProducts.find(p => p.id === prodId));
     }

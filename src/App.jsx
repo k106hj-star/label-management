@@ -1229,10 +1229,11 @@ export default function App({ user }) {
       const label = labels.find(l => l.id === item.labelId);
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
-      // 사이즈 전용 라벨(M/L/XL 등)은 해당 사이즈 합계만 사용, 그 외는 총합
-      const effectiveQty = (!isDaebong && label.size && sizeQtyMap[label.size] !== undefined)
-        ? sizeQtyMap[label.size]
-        : totalQty;
+      const isSizeSpecific = !isDaebong && label.size && label.size !== 'OS' && label.size !== 'FR' && label.size !== '소' && label.size !== '대';
+      // 사이즈 전용 라벨인데 해당 사이즈 수량이 없으면 제외
+      if (isSizeSpecific && sizeQtyMap[label.size] === undefined) return null;
+      // 사이즈 전용 라벨은 해당 사이즈 합계만 사용, 그 외는 총합
+      const effectiveQty = isSizeSpecific ? sizeQtyMap[label.size] : totalQty;
       const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * effectiveQty;
       const availableStock = Math.max(0, label.stock - (label.reserveStock ?? 0));
       const shortage = Math.max(0, totalNeed - availableStock);

@@ -442,13 +442,22 @@ export default function App({ user }) {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
     getDoc(doc(db, 'settings', 'products')).then(snap => {
+      const localRaw = localStorage.getItem('label_products');
+      const localData = localRaw ? JSON.parse(localRaw) : [];
       if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const data = snap.data().list;
-        setProducts(data);
-        localStorage.setItem('label_products', JSON.stringify(data));
-      } else if (productsWasInLS.current) {
+        const fsData = snap.data().list;
+        // Firestore + 로컬 병합: 양쪽의 상품을 id 기준으로 합침
+        const merged = [...fsData];
+        localData.forEach(lp => {
+          if (!merged.find(fp => fp.id === lp.id)) merged.push(lp);
+        });
+        setProducts(merged);
+        localStorage.setItem('label_products', JSON.stringify(merged));
+        // 병합된 결과로 Firestore 업데이트
+        setDoc(doc(db, 'settings', 'products'), { list: JSON.parse(JSON.stringify(merged)) }).catch(() => {});
+      } else if (localData.length > 0) {
         try {
-          const clean = JSON.parse(JSON.stringify(products));
+          const clean = JSON.parse(JSON.stringify(localData));
           setDoc(doc(db, 'settings', 'products'), { list: clean }).catch(() => {});
         } catch(e) {}
       }

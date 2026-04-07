@@ -2014,7 +2014,7 @@ export default function App({ user }) {
                     <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') executeSearch(); }} placeholder="라벨명, 품번 검색" className="pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
                   </div>
                   <button onClick={executeSearch} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors">검색</button>
-                  {searchQuery && <button onClick={() => { setSearchInput(''); setSearchQuery(''); }} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs font-medium rounded-lg transition-colors">초기화</button>}
+                  <button onClick={() => { setSearchInput(''); setSearchQuery(''); setBrandFilter('전체'); setTypeFilter('전체'); setVendorFilter('전체'); setLabelPage(1); }} className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs font-medium rounded-lg transition-colors">초기화</button>
                 </div>
                 {/* 브랜드 필터 */}
                 <select value={brandFilter} onChange={e => { setBrandFilter(e.target.value); setLabelPage(1); }} className="px-2 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-400">

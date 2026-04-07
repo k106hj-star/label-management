@@ -2194,7 +2194,7 @@ export default function App({ user }) {
                         onChange={e => setBomSearchInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && setBomSearchQuery(bomSearchInput)}
                         placeholder="라벨명, 품번 검색"
-                        className="w-40 p-2 border border-slate-300 rounded text-sm bg-white"
+                        className="flex-1 min-w-0 p-2 border border-slate-300 rounded text-sm bg-white"
                       />
                       <button onClick={() => setBomSearchQuery(bomSearchInput)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded font-medium">검색</button>
                       <select value={bomBrandFilter} onChange={e => { setBomBrandFilter(e.target.value); setBomSelection({ ...bomSelection, labelIds: [] }); }} className="p-2 border border-slate-300 rounded text-sm bg-white">

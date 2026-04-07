@@ -5,7 +5,7 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import { db, storage, auth } from './firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import AdminPage from './AdminPage';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -409,25 +409,38 @@ export default function App({ user }) {
   const ordersWasInLS = useRef(!!localStorage.getItem('label_saved_orders'));
   const logsWasInLS = useRef(!!localStorage.getItem('label_stock_logs'));
 
-  // --- Labels Firestore 동기화 (항상 Firestore 최신 로드 → 멀티 기기 연동) ---
+  // --- Labels 실시간 동기화 (onSnapshot) ---
   const labelsCanSave = useRef(false);
-  const firestoreLabelsLoaded = useRef(false);
+  const labelsLastWriteJson = useRef('');
   useEffect(() => {
-    if (firestoreLabelsLoaded.current) return;
-    firestoreLabelsLoaded.current = true;
-    getDoc(doc(db, 'settings', 'labels')).then(snap => {
-      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const data = snap.data().list;
-        setLabels(data);
-        localStorage.setItem('label_inventory', JSON.stringify(data));
-        localStorage.setItem('label_data_version', String(DATA_VERSION));
-      } else if (labelsWasInLS.current) {
-        try {
-          const clean = JSON.parse(JSON.stringify(labels));
-          setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
-        } catch(e) {}
+    // 초기 로컬 데이터가 없으면 Firestore에서 먼저 로드
+    if (!labelsWasInLS.current) {
+      getDoc(doc(db, 'settings', 'labels')).then(snap => {
+        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
+          setLabels(snap.data().list);
+          localStorage.setItem('label_inventory', JSON.stringify(snap.data().list));
+        }
+      }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
+    } else {
+      // 로컬 데이터가 있으면 즉시 저장 가능
+      labelsCanSave.current = true;
+      // 최초 로컬 → Firestore 업로드
+      const localRaw = localStorage.getItem('label_inventory');
+      if (localRaw) {
+        try { setDoc(doc(db, 'settings', 'labels'), { list: JSON.parse(localRaw) }).catch(() => {}); } catch(e) {}
       }
-    }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
+    }
+    // 실시간 리스너: 다른 사용자의 변경만 반영 (내 쓰기는 hasPendingWrites로 스킵)
+    const unsub = onSnapshot(doc(db, 'settings', 'labels'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData) || fsData.length === 0) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === labelsLastWriteJson.current) return; // 내 쓰기 확정 스킵
+      setLabels(fsData);
+      localStorage.setItem('label_inventory', JSON.stringify(fsData));
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -436,6 +449,7 @@ export default function App({ user }) {
     if (!labelsCanSave.current) return;
     try {
       const clean = JSON.parse(JSON.stringify(labels));
+      labelsLastWriteJson.current = JSON.stringify(clean);
       setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
     } catch(e) {}
   }, [labels]);
@@ -941,45 +955,53 @@ export default function App({ user }) {
   const [openOrderMenuId, setOpenOrderMenuId] = useState(null);
   const [orderMenuPos, setOrderMenuPos] = useState({ top: 0, left: 0 });
 
-  const applyOrderToStock = (order) => {
-    if (order.applied) {
-      alert('이미 발주 확정된 내역입니다.');
-      return;
-    }
+  const applyOrderToStock = async (order) => {
+    if (order.applied) { alert('이미 발주 확정된 내역입니다.'); return; }
     const orderItems = (order.details || []).filter(d => d.shortage > 0);
-    if (orderItems.length === 0) {
-      alert('발주 수량이 없습니다.');
-      return;
-    }
+    if (orderItems.length === 0) { alert('발주 수량이 없습니다.'); return; }
     const confirmMsg = `발주 확정 시 재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => `• ${d.labelName || d.name} (${d.size}): ${d.shortage.toLocaleString()}개`).join('\n')}\n\n진행하시겠습니까?`;
     if (!window.confirm(confirmMsg)) return;
-    const logItems = orderItems.map(d => {
-      const label = labels.find(l => l.id === d.id);
-      const before = label ? label.stock : 0;
-      return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
-    });
-    setLabels(prev => prev.map(label => {
-      const matched = orderItems.find(d => d.id === label.id);
-      if (matched) {
-        return { ...label, stock: label.stock - matched.shortage };
-      }
-      return label;
-    }));
     const appliedAt = new Date().toLocaleString('ko-KR');
-    setSavedOrders(prev => {
-      const updated = prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
-      // Firestore 즉시 저장 (레이스 컨디션 방지)
-      try { setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(updated)) }).catch(() => {}); } catch(e) {}
-      try { localStorage.setItem('label_saved_orders', JSON.stringify(updated)); } catch(e) {}
-      return updated;
-    });
-    if (viewOrder?.id === order.id) {
-      setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
+    const _uid = user?.email ? user.email.split('@')[0] : '';
+    const _name = currentUserName || user?.displayName || '';
+    try {
+      // runTransaction: 동시 접속 시 재고 이중 차감 방지 (원자적 처리)
+      let logItems = [];
+      await runTransaction(db, async (tx) => {
+        const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
+        const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
+        const fsOrders = ordersSnap.data()?.list || [];
+        const fsLabels = labelsSnap.data()?.list || [];
+        // 이미 다른 사용자가 확정했는지 체크
+        const fsOrder = fsOrders.find(o => o.id === order.id);
+        if (fsOrder?.applied) throw new Error('already_applied');
+        // 재고 차감
+        logItems = orderItems.map(d => {
+          const lbl = fsLabels.find(l => l.id === d.id);
+          const before = lbl ? lbl.stock : 0;
+          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
+        });
+        const updatedLabels = fsLabels.map(lbl => {
+          const matched = orderItems.find(d => d.id === lbl.id);
+          return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
+        });
+        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
+        tx.set(doc(db, 'settings', 'labels'), { list: updatedLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: updatedOrders });
+      });
+      // 트랜잭션 성공 → 로컬 상태 업데이트
+      setLabels(prev => prev.map(lbl => {
+        const matched = orderItems.find(d => d.id === lbl.id);
+        return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
+      }));
+      setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o));
+      if (viewOrder?.id === order.id) setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
+      setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _uid, userName: _name }, ...prev]);
+      alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
+    } catch(e) {
+      if (e.message === 'already_applied') alert('이미 다른 사용자가 발주 확정했습니다. 새로고침 후 확인하세요.');
+      else alert('발주 확정 중 오류가 발생했습니다: ' + e.message);
     }
-    const _deductUid = user?.email ? user.email.split('@')[0] : '';
-    const _deductName = currentUserName || user?.displayName || '';
-    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _deductUid, userName: _deductName }, ...prev]);
-    alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
   };
 
   const cancelOrderFromStock = (order) => {
@@ -1011,36 +1033,60 @@ export default function App({ user }) {
     alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
   };
 
+  // --- SavedOrders 실시간 동기화 (onSnapshot) ---
   const ordersCanSave = useRef(false);
-  const firestoreOrdersLoaded = useRef(false);
+  const ordersLastWriteJson = useRef('');
   useEffect(() => {
-    if (firestoreOrdersLoaded.current) return;
-    firestoreOrdersLoaded.current = true;
+    const localRaw = localStorage.getItem('label_saved_orders');
+    const localData = localRaw ? JSON.parse(localRaw) : [];
+
+    // 초기 병합 (로컬 + Firestore)
     getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-      const localRaw = localStorage.getItem('label_saved_orders');
-      const localData = localRaw ? JSON.parse(localRaw) : [];
       const fsData = (snap.exists() && Array.isArray(snap.data()?.list)) ? snap.data().list : [];
-
-      // 로컬 기준으로 병합 — applied:true 는 어느 쪽이든 보존
-      const merged = localData.map(lo => {
-        const fo = fsData.find(f => f.id === lo.id);
-        if (!fo) return lo;
-        // 둘 중 하나라도 applied:true 면 confirmed 상태 유지
-        const applied = lo.applied || fo.applied;
-        const appliedAt = lo.appliedAt || fo.appliedAt;
-        return { ...fo, ...lo, applied, appliedAt };
-      });
-      // Firestore 에만 있는 항목 추가
+      const merged = [...localData];
       fsData.forEach(fo => {
-        if (!merged.find(m => m.id === fo.id)) merged.push(fo);
+        const idx = merged.findIndex(m => m.id === fo.id);
+        if (idx === -1) { merged.push(fo); }
+        else {
+          merged[idx] = { ...fo, ...merged[idx],
+            applied: merged[idx].applied || fo.applied,
+            appliedAt: merged[idx].appliedAt || fo.appliedAt };
+        }
       });
-
       setSavedOrders(merged);
       localStorage.setItem('label_saved_orders', JSON.stringify(merged));
-      try {
-        setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(merged)) }).catch(() => {});
-      } catch(e) {}
+      const clean = JSON.parse(JSON.stringify(merged));
+      ordersLastWriteJson.current = JSON.stringify(clean);
+      setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
     }).catch(() => {}).finally(() => { ordersCanSave.current = true; });
+
+    // 실시간 리스너: 다른 사용자의 발주 확정/취소를 즉시 반영
+    const unsub = onSnapshot(doc(db, 'settings', 'savedOrders'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData)) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === ordersLastWriteJson.current) return; // 내 쓰기 확정 스킵
+      // 외부 변경 병합: applied:true 는 절대 false로 되돌리지 않음
+      setSavedOrders(prev => {
+        let changed = false;
+        const merged = prev.map(lo => {
+          const fo = fsData.find(f => f.id === lo.id);
+          if (!fo) return lo;
+          const newApplied = lo.applied || fo.applied;
+          const newAppliedAt = lo.appliedAt || fo.appliedAt;
+          if (JSON.stringify({ ...fo, applied: newApplied, appliedAt: newAppliedAt }) !== JSON.stringify(lo)) {
+            changed = true;
+            return { ...fo, applied: newApplied, appliedAt: newAppliedAt };
+          }
+          return lo;
+        });
+        fsData.forEach(fo => { if (!merged.find(m => m.id === fo.id)) { merged.push(fo); changed = true; } });
+        if (changed) localStorage.setItem('label_saved_orders', JSON.stringify(merged));
+        return changed ? merged : prev;
+      });
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -1048,6 +1094,7 @@ export default function App({ user }) {
     if (!ordersCanSave.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
+      ordersLastWriteJson.current = JSON.stringify(cleanData);
       setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch(() => {});
     } catch(e) {}
   }, [savedOrders]);

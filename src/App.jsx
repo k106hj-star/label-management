@@ -1486,8 +1486,16 @@ export default function App({ user }) {
         }
       }
 
-      const vendorLabel = vendorName || Object.keys(groups).join('_');
-      const filename = `${vendorLabel}_발주서_${todayStr}.pdf`;
+      // 품번: 상품명/품번 입력값에서 품번 부분만 추출 (공백 기준 마지막 단어)
+      const productCode = (() => {
+        const text = (calcSearchText || '').trim();
+        if (!text) return '';
+        const parts = text.split(/\s+/);
+        return parts[parts.length - 1];
+      })();
+      const factory = (calcFactory || '').trim();
+      const filenameParts = [todayStr, productCode, factory].filter(Boolean);
+      const filename = `${filenameParts.join('_')}.pdf`;
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
       setPdfPreview({ url, filename });

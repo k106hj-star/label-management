@@ -965,9 +965,16 @@ export default function App({ user }) {
       }
       return label;
     }));
-    setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt: new Date().toLocaleString('ko-KR') } : o));
+    const appliedAt = new Date().toLocaleString('ko-KR');
+    setSavedOrders(prev => {
+      const updated = prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
+      // Firestore 즉시 저장 (레이스 컨디션 방지)
+      try { setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(updated)) }).catch(() => {}); } catch(e) {}
+      try { localStorage.setItem('label_saved_orders', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
     if (viewOrder?.id === order.id) {
-      setViewOrder(prev => ({ ...prev, applied: true, appliedAt: new Date().toLocaleString('ko-KR') }));
+      setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
     }
     const _deductUid = user?.email ? user.email.split('@')[0] : '';
     const _deductName = currentUserName || user?.displayName || '';
@@ -989,7 +996,12 @@ export default function App({ user }) {
       if (matched) return { ...label, stock: label.stock + matched.shortage };
       return label;
     }));
-    setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o));
+    setSavedOrders(prev => {
+      const updated = prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
+      try { setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(updated)) }).catch(() => {}); } catch(e) {}
+      try { localStorage.setItem('label_saved_orders', JSON.stringify(updated)); } catch(e) {}
+      return updated;
+    });
     if (viewOrder?.id === order.id) {
       setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
     }
@@ -1005,16 +1017,29 @@ export default function App({ user }) {
     if (firestoreOrdersLoaded.current) return;
     firestoreOrdersLoaded.current = true;
     getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const data = snap.data().list;
-        setSavedOrders(data);
-        localStorage.setItem('label_saved_orders', JSON.stringify(data));
-      } else if (ordersWasInLS.current) {
-        try {
-          const clean = JSON.parse(JSON.stringify(savedOrders));
-          setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
-        } catch(e) {}
-      }
+      const localRaw = localStorage.getItem('label_saved_orders');
+      const localData = localRaw ? JSON.parse(localRaw) : [];
+      const fsData = (snap.exists() && Array.isArray(snap.data()?.list)) ? snap.data().list : [];
+
+      // 로컬 기준으로 병합 — applied:true 는 어느 쪽이든 보존
+      const merged = localData.map(lo => {
+        const fo = fsData.find(f => f.id === lo.id);
+        if (!fo) return lo;
+        // 둘 중 하나라도 applied:true 면 confirmed 상태 유지
+        const applied = lo.applied || fo.applied;
+        const appliedAt = lo.appliedAt || fo.appliedAt;
+        return { ...fo, ...lo, applied, appliedAt };
+      });
+      // Firestore 에만 있는 항목 추가
+      fsData.forEach(fo => {
+        if (!merged.find(m => m.id === fo.id)) merged.push(fo);
+      });
+
+      setSavedOrders(merged);
+      localStorage.setItem('label_saved_orders', JSON.stringify(merged));
+      try {
+        setDoc(doc(db, 'settings', 'savedOrders'), { list: JSON.parse(JSON.stringify(merged)) }).catch(() => {});
+      } catch(e) {}
     }).catch(() => {}).finally(() => { ordersCanSave.current = true; });
   }, []);
 

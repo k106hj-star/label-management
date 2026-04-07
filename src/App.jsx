@@ -1209,11 +1209,19 @@ export default function App({ user }) {
     let totalCost = 0;
     const daebongRatio = calcDaebongType ? DAEBONG_RATIO[calcDaebongType] : 0;
     const daebongCalcQty = daebongRatio > 0 ? Math.ceil(totalQty / daebongRatio) : 0;
+    // 사이즈별 수량 합계 (예: M→170, L→170, ...)
+    const sizeQtyMap = {};
+    validRows.forEach(r => { sizeQtyMap[r.size] = (sizeQtyMap[r.size] || 0) + r.qty; });
+
     const details = product.bom.map(item => {
       const label = labels.find(l => l.id === item.labelId);
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
-      const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * totalQty;
+      // 사이즈 전용 라벨(M/L/XL 등)은 해당 사이즈 합계만 사용, 그 외는 총합
+      const effectiveQty = (!isDaebong && label.size && sizeQtyMap[label.size] !== undefined)
+        ? sizeQtyMap[label.size]
+        : totalQty;
+      const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * effectiveQty;
       const availableStock = Math.max(0, label.stock - (label.reserveStock ?? 0));
       const shortage = Math.max(0, totalNeed - availableStock);
       const cost = shortage * label.price;

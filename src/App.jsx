@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown, Users } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db, storage, auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import AdminPage from './AdminPage';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
@@ -343,6 +344,17 @@ export default function App({ user }) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [labelPage, setLabelPage] = useState(1);
   const [labelPageSize, setLabelPageSize] = useState(30);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Firestore에서 관리자 여부 확인
+  useEffect(() => {
+    if (!user?.uid) return;
+    import('firebase/firestore').then(({ getDoc: gd, doc: d }) => {
+      gd(d(db, 'users', user.uid)).then(snap => {
+        if (snap.exists()) setIsAdmin(!!snap.data().isAdmin);
+      });
+    });
+  }, [user?.uid]);
 
   const [labels, setLabels] = useState(() => {
     const savedVersion = localStorage.getItem('label_data_version');
@@ -1045,6 +1057,7 @@ export default function App({ user }) {
     { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-600' },
     { id: '재고리스트', label: '재고리스트', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-600' },
     { id: '재고로그', label: '재고로그', icon: History, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', activeBg: 'bg-green-600' },
+    ...(isAdmin ? [{ id: '계정관리', label: '계정 관리', icon: Users, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200', activeBg: 'bg-violet-600', adminOnly: true }] : []),
   ];
 
   const getFileIcon = (ext) => {
@@ -3327,6 +3340,9 @@ export default function App({ user }) {
               })}
             </div>
             </>
+          ) : docActiveFolder === '계정관리' ? (
+            /* 계정관리 폴더 = 관리자 전용 사용자 관리 */
+            <AdminPage currentUser={user} />
           ) : docActiveFolder === '재고로그' ? (
             /* 재고로그 폴더 = 재고 변동 로그 뷰 */
             <>

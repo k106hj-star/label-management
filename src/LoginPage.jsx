@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from './firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth, db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 const DOMAIN = '@fairplay142.com';
 
@@ -19,13 +20,23 @@ export default function LoginPage() {
     setError('');
     try {
       const email = userId.trim() + DOMAIN;
-      await signInWithEmailAndPassword(auth, email, password);
-      // 로그인 성공 → App.jsx의 onAuthStateChanged가 감지하여 전환
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+
+      // Firestore에서 active 여부 확인
+      const userSnap = await getDoc(doc(db, 'users', cred.user.uid));
+      if (userSnap.exists() && userSnap.data().active === false) {
+        await signOut(auth);
+        setError('비활성화된 계정입니다. 관리자에게 문의하세요.');
+        return;
+      }
+      // 로그인 성공 → main.jsx의 onAuthStateChanged가 감지하여 전환
     } catch (err) {
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('아이디 또는 비밀번호가 올바르지 않습니다.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.');
+      } else if (!err.code) {
+        // 위에서 throw 없이 return한 경우 등
       } else {
         setError('로그인 중 오류가 발생했습니다.');
       }

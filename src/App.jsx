@@ -2186,15 +2186,15 @@ export default function App({ user }) {
                   <p className="text-sm text-slate-500 mb-6">이 옷을 1벌 만들 때 들어가는 라벨과 수량을 등록해두세요.</p>
 
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
-                    {/* 검색 + 종류 필터 */}
-                    <div className="flex gap-2 mb-3">
+                    {/* 검색 + 필터 + 수량 + 추가 — 1줄 */}
+                    <div className="flex gap-2 items-center mb-3">
                       <input
                         type="text"
                         value={bomSearchInput}
                         onChange={e => setBomSearchInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && setBomSearchQuery(bomSearchInput)}
                         placeholder="라벨명, 품번 검색"
-                        className="flex-1 p-2 border border-slate-300 rounded text-sm bg-white"
+                        className="w-40 p-2 border border-slate-300 rounded text-sm bg-white"
                       />
                       <button onClick={() => setBomSearchQuery(bomSearchInput)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded font-medium">검색</button>
                       <select value={bomBrandFilter} onChange={e => { setBomBrandFilter(e.target.value); setBomSelection({ ...bomSelection, labelIds: [] }); }} className="p-2 border border-slate-300 rounded text-sm bg-white">
@@ -2211,15 +2211,11 @@ export default function App({ user }) {
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
-                    </div>
-                    <div className="flex gap-4 items-end mb-3">
-                    <div className="w-24">
-                      <label className="block text-xs text-slate-500 mb-1">1벌당 수량</label>
-                      <input type="number" min="1" value={bomSelection.qty} onChange={e => setBomSelection({ ...bomSelection, qty: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white" />
-                    </div>
-                    <button onClick={addLabelToBom} disabled={bomSelection.labelIds.length === 0} className={`px-4 py-2 rounded text-sm font-medium ${bomSelection.labelIds.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
-                      추가 {bomSelection.labelIds.length > 0 && `(${bomSelection.labelIds.length})`}
-                    </button>
+                      <span className="text-xs text-slate-500 ml-2 whitespace-nowrap">1벌당 수량</span>
+                      <input type="number" min="1" value={bomSelection.qty} onChange={e => setBomSelection({ ...bomSelection, qty: e.target.value })} className="w-16 p-2 border border-slate-300 rounded text-sm bg-white" />
+                      <button onClick={addLabelToBom} disabled={bomSelection.labelIds.length === 0} className={`px-4 py-2 rounded text-sm font-medium whitespace-nowrap ${bomSelection.labelIds.length > 0 ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
+                        추가 {bomSelection.labelIds.length > 0 && `(${bomSelection.labelIds.length})`}
+                      </button>
                     </div>
                     <div className="max-h-96 overflow-y-auto border border-slate-200 rounded bg-white">
                       {labels.filter(l => {

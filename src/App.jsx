@@ -770,6 +770,9 @@ export default function App({ user }) {
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [bomBrandFilter, setBomBrandFilter] = useState('auto');
+  const [bomTypeFilter, setBomTypeFilter] = useState('전체');
+  const [bomSearchInput, setBomSearchInput] = useState('');
+  const [bomSearchQuery, setBomSearchQuery] = useState('');
   const [productSearch, setProductSearch] = useState('');
 
   const startEditProduct = (product) => {
@@ -2183,18 +2186,33 @@ export default function App({ user }) {
                   <p className="text-sm text-slate-500 mb-6">이 옷을 1벌 만들 때 들어가는 라벨과 수량을 등록해두세요.</p>
 
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
-                    <div className="flex gap-4 items-end mb-3">
-                    <div className="w-32">
-                      <label className="block text-xs text-slate-500 mb-1">브랜드 필터</label>
-                      <select value={bomBrandFilter} onChange={e => { setBomBrandFilter(e.target.value); setBomSelection({ ...bomSelection, labelIds: [] }); }} className="w-full p-2 border border-slate-300 rounded text-sm bg-white">
+                    {/* 검색 + 종류 필터 */}
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={bomSearchInput}
+                        onChange={e => setBomSearchInput(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && setBomSearchQuery(bomSearchInput)}
+                        placeholder="라벨명, 품번 검색"
+                        className="flex-1 p-2 border border-slate-300 rounded text-sm bg-white"
+                      />
+                      <button onClick={() => setBomSearchQuery(bomSearchInput)} className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded font-medium">검색</button>
+                      <select value={bomBrandFilter} onChange={e => { setBomBrandFilter(e.target.value); setBomSelection({ ...bomSelection, labelIds: [] }); }} className="p-2 border border-slate-300 rounded text-sm bg-white">
                         <option value="auto">{selectedProduct.brand}</option>
                         {[...new Set(labels.map(l => l.brand))].filter(b => b !== '공용' && b !== selectedProduct.brand).map(b => (
                           <option key={b} value={b}>{b}</option>
                         ))}
                         <option value="공용">공용</option>
-                        <option value="all">전체</option>
+                        <option value="all">브랜드 전체</option>
+                      </select>
+                      <select value={bomTypeFilter} onChange={e => setBomTypeFilter(e.target.value)} className="p-2 border border-slate-300 rounded text-sm bg-white">
+                        <option value="전체">종류 전체</option>
+                        {[...new Set(labels.map(l => l.type).filter(Boolean))].sort().map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
                       </select>
                     </div>
+                    <div className="flex gap-4 items-end mb-3">
                     <div className="w-24">
                       <label className="block text-xs text-slate-500 mb-1">1벌당 수량</label>
                       <input type="number" min="1" value={bomSelection.qty} onChange={e => setBomSelection({ ...bomSelection, qty: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm bg-white" />
@@ -2205,9 +2223,15 @@ export default function App({ user }) {
                     </div>
                     <div className="max-h-96 overflow-y-auto border border-slate-200 rounded bg-white">
                       {labels.filter(l => {
-                        if (bomBrandFilter === 'all') return true;
-                        const brand = bomBrandFilter === 'auto' ? selectedProduct.brand : bomBrandFilter;
-                        return l.brand === brand;
+                        const brandMatch = (() => {
+                          if (bomBrandFilter === 'all') return true;
+                          const brand = bomBrandFilter === 'auto' ? selectedProduct.brand : bomBrandFilter;
+                          return l.brand === brand;
+                        })();
+                        const typeMatch = bomTypeFilter === '전체' || l.type === bomTypeFilter;
+                        const q = bomSearchQuery.trim().toLowerCase();
+                        const searchMatch = !q || l.name?.toLowerCase().includes(q) || l.code?.toLowerCase().includes(q);
+                        return brandMatch && typeMatch && searchMatch;
                       }).map(l => {
                         const alreadyAdded = selectedProduct.bom.some(b => b.labelId === l.id);
                         const isChecked = bomSelection.labelIds.includes(String(l.id));

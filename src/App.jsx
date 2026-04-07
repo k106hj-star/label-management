@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown, Users } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import html2canvas from 'html2canvas';
 import { db, storage, auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -1281,7 +1282,6 @@ export default function App({ user }) {
   const generateOrderPDF = async (resultDetails, vendorName = null) => {
     setPdfLoading(true);
     try {
-      const { default: html2canvas } = await import('html2canvas');
 
       const todayStr = (() => {
         const d = new Date();
@@ -1453,12 +1453,13 @@ export default function App({ user }) {
         ));
 
         const canvas = await html2canvas(wrapper.firstChild, {
-          scale: 1.5,
+          scale: 1,
           useCORS: false,
           allowTaint: false,
           logging: false,
           backgroundColor: '#ffffff',
           imageTimeout: 0,
+          foreignObjectRendering: true,
         });
         document.body.removeChild(wrapper);
 
@@ -1479,7 +1480,7 @@ export default function App({ user }) {
           sliceCanvas.height = sliceH;
           sliceCanvas.getContext('2d').drawImage(canvas, 0, -yPx);
 
-          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.92);
+          const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.75);
           const displayH = sliceH / pxPerMm;
           doc.addImage(sliceData, 'JPEG', MARGIN, MARGIN, contentW, displayH);
           yPx += pageCanvasPx;
@@ -2677,33 +2678,15 @@ export default function App({ user }) {
                   <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
                 </div>
                 <div className="mt-4 flex justify-between items-center gap-3">
-                  {/* PDF 다운로드 버튼 (공급처별) */}
+                  {/* PDF 다운로드 버튼 — 스마트 발주서만 */}
                   <div className="flex items-center gap-2">
-                    {(() => {
-                      const vendors = [...new Set(calcResult.details.map(d => d.vendor || '(공급처 미입력)'))];
-                      return vendors.map(v => (
-                        <button
-                          key={v}
-                          onClick={() => generateOrderPDF(calcResult.details, v)}
-                          disabled={pdfLoading}
-                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
-                        >
-                          <FileDown size={16} /> {pdfLoading ? '생성 중...' : `${v} 발주서 PDF`}
-                        </button>
-                      ));
-                    })()}
-                    {(() => {
-                      const vendors = [...new Set(calcResult.details.map(d => d.vendor || '(공급처 미입력)'))];
-                      return vendors.length > 1 ? (
-                        <button
-                          onClick={() => generateOrderPDF(calcResult.details)}
-                          disabled={pdfLoading}
-                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
-                        >
-                          <FileDown size={16} /> {pdfLoading ? '생성 중...' : '전체 PDF'}
-                        </button>
-                      ) : null;
-                    })()}
+                    <button
+                      onClick={() => generateOrderPDF(calcResult.details.filter(d => d.vendor === '스마트'), '스마트')}
+                      disabled={pdfLoading}
+                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                    >
+                      <FileDown size={16} /> {pdfLoading ? '생성 중...' : '스마트 발주서 PDF'}
+                    </button>
                   </div>
                   <div className="flex items-center gap-3">
                   <button

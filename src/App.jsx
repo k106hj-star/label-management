@@ -3208,7 +3208,13 @@ export default function App({ user }) {
 
       {/* 라벨 발주 로그 모달 */}
       {labelLogModal && (() => {
-        const labelLogs = stockLogs.filter(log => log.items?.some(item => item.labelId === labelLogModal.id));
+        // labelId 직접 매칭 또는 이름+사이즈 폴백 매칭 (구버전 ID 호환)
+        const labelLogs = stockLogs.filter(log =>
+          log.items?.some(item =>
+            item.labelId === labelLogModal.id ||
+            (item.labelName === labelLogModal.name && item.size === labelLogModal.size)
+          )
+        );
         return (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setLabelLogModal(null)}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl p-6" onClick={e => e.stopPropagation()}>
@@ -3241,7 +3247,10 @@ export default function App({ user }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {labelLogs.map(log => {
-                        const item = log.items?.find(i => i.labelId === labelLogModal.id);
+                        const item = log.items?.find(i =>
+                          i.labelId === labelLogModal.id ||
+                          (i.labelName === labelLogModal.name && i.size === labelLogModal.size)
+                        );
                         return (
                           <tr key={log.id} className="hover:bg-slate-50">
                             <td className="p-2 text-slate-600 whitespace-nowrap">{log.date}</td>

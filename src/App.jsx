@@ -412,6 +412,8 @@ export default function App({ user }) {
   // --- Labels 실시간 동기화 (onSnapshot) ---
   const labelsCanSave = useRef(false);
   const labelsLastWriteJson = useRef('');
+  // 트랜잭션 진행 중 useEffect 쓰기 차단 플래그
+  const transactionInProgress = useRef(false);
   useEffect(() => {
     // 초기 로컬 데이터가 없으면 Firestore에서 먼저 로드
     if (!labelsWasInLS.current) {
@@ -446,7 +448,7 @@ export default function App({ user }) {
   useEffect(() => {
     localStorage.setItem('label_inventory', JSON.stringify(labels));
     localStorage.setItem('label_data_version', String(DATA_VERSION));
-    if (!labelsCanSave.current) return;
+    if (!labelsCanSave.current || transactionInProgress.current) return;
     try {
       const clean = JSON.parse(JSON.stringify(labels));
       labelsLastWriteJson.current = JSON.stringify(clean);
@@ -964,6 +966,7 @@ export default function App({ user }) {
     const appliedAt = new Date().toLocaleString('ko-KR');
     const _uid = user?.email ? user.email.split('@')[0] : '';
     const _name = currentUserName || user?.displayName || '';
+    transactionInProgress.current = true; // useEffect 쓰기 차단
     try {
       // runTransaction: 동시 접속 시 재고 이중 차감 방지 (원자적 처리)
       let logItems = [];
@@ -1025,6 +1028,8 @@ export default function App({ user }) {
     } catch(e) {
       if (e.message === 'already_applied') alert('이미 다른 사용자가 발주 확정했습니다. 새로고침 후 확인하세요.');
       else alert('발주 확정 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+      transactionInProgress.current = false; // useEffect 쓰기 재개
     }
   };
 
@@ -1034,6 +1039,7 @@ export default function App({ user }) {
     if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 재고 수량이 원복됩니다.`)) return;
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';
+    transactionInProgress.current = true; // useEffect 쓰기 차단
     try {
       let logItems = [];
       await runTransaction(db, async (tx) => {
@@ -1093,6 +1099,8 @@ export default function App({ user }) {
     } catch(e) {
       if (e.message === 'already_cancelled') alert('이미 취소된 발주입니다. 새로고침 후 확인하세요.');
       else alert('취소 처리 중 오류가 발생했습니다: ' + e.message);
+    } finally {
+      transactionInProgress.current = false; // useEffect 쓰기 재개
     }
   };
 
@@ -1154,7 +1162,7 @@ export default function App({ user }) {
 
   useEffect(() => {
     try { localStorage.setItem('label_saved_orders', JSON.stringify(savedOrders)); } catch(e) {}
-    if (!ordersCanSave.current) return;
+    if (!ordersCanSave.current || transactionInProgress.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
       ordersLastWriteJson.current = JSON.stringify(cleanData);

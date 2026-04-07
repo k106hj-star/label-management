@@ -1057,7 +1057,9 @@ export default function App({ user }) {
   }, [stockLogs]);
 
   const addLog = (entry) => {
-    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), ...entry }, ...prev]);
+    const uid = user?.email ? user.email.split('@')[0] : '';
+    const displayName = user?.displayName || '';
+    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName: displayName, ...entry }, ...prev]);
   };
   const safetyStockPrev = useRef({});
 
@@ -1557,7 +1559,12 @@ export default function App({ user }) {
             <span className="text-sm font-semibold text-slate-700">{log.summary || log.productName || log.labelName}</span>
             {log.factory && log.factory !== '-' && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {(log.userId || log.userName) && (
+              <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                {log.userName ? `${log.userName}` : ''}{log.userId && log.userName ? ` (${log.userId})` : log.userId}
+              </span>
+            )}
             <span className="text-xs text-slate-400 whitespace-nowrap">{log.date}</span>
             {hasDetail && (
               <span className="text-slate-400 transition-transform duration-200" style={{ display:'inline-block', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>

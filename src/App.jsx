@@ -346,12 +346,16 @@ export default function App({ user }) {
   const [labelPage, setLabelPage] = useState(1);
   const [labelPageSize, setLabelPageSize] = useState(30);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState('');
 
-  // Firestore에서 관리자 여부 확인
+  // Firestore에서 관리자 여부 + 사용자 이름 확인
   useEffect(() => {
     if (!user?.uid) return;
     getDoc(doc(db, 'users', user.uid)).then(snap => {
-      if (snap.exists()) setIsAdmin(!!snap.data().isAdmin);
+      if (snap.exists()) {
+        setIsAdmin(!!snap.data().isAdmin);
+        setCurrentUserName(snap.data().name || snap.data().displayName || user.displayName || '');
+      }
     }).catch(() => {});
   }, [user?.uid]);
 
@@ -965,7 +969,9 @@ export default function App({ user }) {
     if (viewOrder?.id === order.id) {
       setViewOrder(prev => ({ ...prev, applied: true, appliedAt: new Date().toLocaleString('ko-KR') }));
     }
-    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems }, ...prev]);
+    const _deductUid = user?.email ? user.email.split('@')[0] : '';
+    const _deductName = currentUserName || user?.displayName || '';
+    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _deductUid, userName: _deductName }, ...prev]);
     alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
   };
 
@@ -987,7 +993,9 @@ export default function App({ user }) {
     if (viewOrder?.id === order.id) {
       setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
     }
-    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems }, ...prev]);
+    const _restoreUid = user?.email ? user.email.split('@')[0] : '';
+    const _restoreName = currentUserName || user?.displayName || '';
+    setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
     alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
   };
 
@@ -1058,8 +1066,8 @@ export default function App({ user }) {
 
   const addLog = (entry) => {
     const uid = user?.email ? user.email.split('@')[0] : '';
-    const displayName = user?.displayName || '';
-    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName: displayName, ...entry }, ...prev]);
+    const userName = currentUserName || user?.displayName || '';
+    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName, ...entry }, ...prev]);
   };
   const safetyStockPrev = useRef({});
 

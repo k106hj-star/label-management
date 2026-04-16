@@ -1253,28 +1253,29 @@ export default function App({ user }) {
   // 재고로그 카테고리 폴더 필터 (null = 카테고리 폴더 그리드 표시, 아닌 경우 해당 카테고리 로그만 표시)
   const [logCategoryFilter, setLogCategoryFilter] = useState(null);
 
-  // 재고로그 카테고리 정의 (로그 type들을 폴더로 분류)
+  // 재고로그 카테고리 정의 (로그 type들을 폴더로 분류) - 모두 회색 톤으로 통일
   const LOG_CATEGORIES = [
-    { id: 'stock',    label: '재고 변동',    icon: Package,    color: 'text-orange-600', bg: 'bg-orange-50',  border: 'border-orange-200', types: ['deduct', 'restore', 'safety_stock'] },
-    { id: 'label',    label: '라벨 관리',    icon: Tag,        color: 'text-blue-600',   bg: 'bg-blue-50',    border: 'border-blue-200',   types: ['add', 'delete', 'edit', 'bulk_delete', 'bulk_edit', 'csv_import'] },
-    { id: 'product',  label: '상품 관리',    icon: ShoppingBag,color: 'text-green-600',  bg: 'bg-green-50',   border: 'border-green-200',  types: ['product_add', 'product_delete', 'product_edit', 'bom_add', 'bom_remove'] },
-    { id: 'order',    label: '발주 관리',    icon: FileEdit,   color: 'text-emerald-600',bg: 'bg-emerald-50', border: 'border-emerald-200',types: ['order_save', 'order_delete', 'order_delete_all', 'order_edit'] },
-    { id: 'image',    label: '이미지 관리',  icon: ImageIcon,  color: 'text-sky-600',    bg: 'bg-sky-50',     border: 'border-sky-200',    types: ['image_update', 'image_sync'] },
+    { id: 'stock',    label: '재고 변동',    icon: Package,    color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', types: ['deduct', 'restore', 'safety_stock'] },
+    { id: 'label',    label: '라벨 관리',    icon: Tag,        color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', types: ['add', 'delete', 'edit', 'bulk_delete', 'bulk_edit', 'csv_import'] },
+    { id: 'product',  label: '상품 관리',    icon: ShoppingBag,color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', types: ['product_add', 'product_delete', 'product_edit', 'bom_add', 'bom_remove'] },
+    { id: 'order',    label: '발주 관리',    icon: FileEdit,   color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', types: ['order_save', 'order_delete', 'order_delete_all', 'order_edit'] },
+    { id: 'image',    label: '이미지 관리',  icon: ImageIcon,  color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', types: ['image_update', 'image_sync'] },
   ];
 
+  // 자료실 폴더 (색상 제거, 회색 톤 통일)
   const DOC_FOLDERS = [
-    { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200', activeBg: 'bg-purple-600' },
-    { id: '재고리스트', label: '재고리스트', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200', activeBg: 'bg-blue-600' },
-    { id: '재고로그', label: '재고로그', icon: History, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200', activeBg: 'bg-green-600' },
-    ...(isAdmin ? [{ id: '계정관리', label: '계정 관리', icon: Users, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200', activeBg: 'bg-violet-600', adminOnly: true }] : []),
+    { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
+    { id: '재고리스트', label: '재고리스트', icon: FileText,  color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
+    { id: '재고로그',   label: '재고로그',   icon: History,   color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
+    ...(isAdmin ? [{ id: '계정관리', label: '계정 관리', icon: Users, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600', adminOnly: true }] : []),
   ];
 
   const getFileIcon = (ext) => {
     const e = (ext || '').toLowerCase();
-    if (['pdf'].includes(e)) return <FileText size={20} className="text-red-500" />;
-    if (['xls','xlsx','csv'].includes(e)) return <FileText size={20} className="text-green-600" />;
-    if (['doc','docx'].includes(e)) return <FileText size={20} className="text-blue-600" />;
-    if (['jpg','jpeg','png','gif','webp'].includes(e)) return <ImageIcon size={20} className="text-purple-500" />;
+    if (['pdf'].includes(e)) return <FileText size={20} className="text-slate-500" />;
+    if (['xls','xlsx','csv'].includes(e)) return <FileText size={20} className="text-slate-500" />;
+    if (['doc','docx'].includes(e)) return <FileText size={20} className="text-slate-500" />;
+    if (['jpg','jpeg','png','gif','webp'].includes(e)) return <ImageIcon size={20} className="text-slate-500" />;
     return <File size={20} className="text-slate-400" />;
   };
 
@@ -1935,7 +1936,7 @@ export default function App({ user }) {
             { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
             { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
-            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-teal-700', bg:'bg-teal-50', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
+            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -3306,7 +3307,7 @@ export default function App({ user }) {
                   <span>페이지당</span>
                   {[30, 50, 100].map(size => (
                     <button key={size} onClick={() => { setLogPageSize(size); setLogPage(1); }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${logPageSize === size ? 'bg-teal-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${logPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                       {size}
                     </button>
                   ))}
@@ -3322,7 +3323,7 @@ export default function App({ user }) {
                       <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
                     ) : (
                       <button key={p} onClick={() => setLogPage(p)}
-                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${logPage === p ? 'bg-teal-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${logPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
                         {p}
                       </button>
                     ))}
@@ -3531,7 +3532,7 @@ export default function App({ user }) {
                   <ChevronLeft size={18} />
                 </button>
               ) : null}
-              <FolderOpen size={20} className="text-teal-600" />
+              <FolderOpen size={20} className="text-slate-600" />
               {docActiveFolder ? (
                 <>
                   <span className="text-slate-400 font-normal">자료실</span>
@@ -3544,7 +3545,7 @@ export default function App({ user }) {
               )}
             </h2>
             {docActiveFolder && (
-              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
+              <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-slate-700 text-white hover:bg-slate-800'}`}>
                 <FilePlus size={16} />
                 {docUploading ? '업로드 중...' : '파일 추가'}
                 <input type="file" multiple className="hidden" onChange={handleDocUpload} disabled={docUploading} />
@@ -3556,7 +3557,7 @@ export default function App({ user }) {
           {!docActiveFolder ? (
             <>
             <div className="flex justify-end">
-              <button onClick={syncLabelImages} className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-medium transition-colors" title="라벨이미지 폴더의 파일명(라벨명 품번)을 기준으로 재고리스트 이미지 자동 매핑">
+              <button onClick={syncLabelImages} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-colors" title="라벨이미지 폴더의 파일명(라벨명 품번)을 기준으로 재고리스트 이미지 자동 매핑">
                 <ImageIcon size={14} /> 재고리스트에 이미지 매핑
               </button>
             </div>
@@ -3674,7 +3675,7 @@ export default function App({ user }) {
                 <div className="flex flex-wrap gap-1.5">
                   {labelImgBrands.map(brand => (
                     <button key={brand} onClick={() => setDocImageBrandFilter(brand)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${docImageBrandFilter === brand ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${docImageBrandFilter === brand ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-400 hover:text-slate-700'}`}>
                       {brand}
                     </button>
                   ))}
@@ -3710,11 +3711,11 @@ export default function App({ user }) {
                       </div>
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <a href={d.url} target="_blank" rel="noopener noreferrer"
-                          className="p-1.5 rounded-lg bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors" title="다운로드">
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors" title="다운로드">
                           <Download size={15} />
                         </a>
                         <button onClick={() => deleteDocument(d)}
-                          className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors" title="삭제">
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="삭제">
                           <Trash2 size={15} />
                         </button>
                       </div>

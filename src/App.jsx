@@ -825,6 +825,16 @@ export default function App({ user }) {
   const [bomSearchInput, setBomSearchInput] = useState('');
   const [bomSearchQuery, setBomSearchQuery] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  // 상품 브랜드 폴더 필터 (null = 폴더 그리드, 브랜드명 = 해당 브랜드 상품)
+  const [productBrandFolder, setProductBrandFolder] = useState(null);
+  // 신규 상품(1분) 타이머를 위한 now 갱신
+  const [productNowTick, setProductNowTick] = useState(Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setProductNowTick(Date.now()), 5000);
+    return () => clearInterval(iv);
+  }, []);
+  const NEW_PRODUCT_WINDOW_MS = 60 * 1000; // 1분
+  const isNewProduct = (p) => (productNowTick - (typeof p.id === 'number' ? p.id : 0)) < NEW_PRODUCT_WINDOW_MS;
 
   const startEditProduct = (product) => {
     setEditProduct({ ...product });
@@ -852,6 +862,8 @@ export default function App({ user }) {
     setNewProductBrand('WV');
     setNewProductName('');
     setSelectedProduct(newProd);
+    // 신규 상품은 1분간 "신규" 섹션에 노출되도록 브랜드 폴더 대신 상단 목록으로 이동
+    setProductBrandFolder(null);
   };
 
   const deleteProduct = (id) => {
@@ -2355,20 +2367,35 @@ export default function App({ user }) {
                   <button onClick={addProduct} className="bg-slate-800 text-white px-3 py-2 rounded hover:bg-slate-700"><Plus size={18} /></button>
                 </div>
               </div>
-              <h2 className="text-lg font-bold mb-3 flex items-center gap-2"><Layers className="text-indigo-600" /> 생산 상품 목록</h2>
+              <h2 className="text-lg font-bold mb-3 flex items-center gap-2 text-slate-800">
+                {productBrandFolder ? (
+                  <>
+                    <button onClick={() => { setProductBrandFolder(null); setProductSearch(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                      <ChevronLeft size={18} />
+                    </button>
+                    <Layers className="text-slate-600" size={20} />
+                    <span className="text-slate-400 font-normal text-sm">생산 상품 목록</span>
+                    <span className="text-slate-400 text-sm">/</span>
+                    <span>{productBrandFolder}</span>
+                  </>
+                ) : (
+                  <><Layers className="text-slate-600" size={20} /> 생산 상품 목록</>
+                )}
+              </h2>
               <div className="relative mb-3">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input type="text" value={productSearch} onChange={e => setProductSearch(e.target.value)} placeholder="상품명 검색..." className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded text-sm bg-white" />
               </div>
-              <div className="space-y-2">
-                {products.filter(p => {
+              {(() => {
+                const productMatchesSearch = (p) => {
                   if (!productSearch) return true;
                   const q = productSearch.toLowerCase();
                   return p.name.toLowerCase().includes(q) || (p.brand || '').toLowerCase().includes(q);
-                }).map(p => (
-                  <div key={p.id} className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${selectedProduct?.id === p.id ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300'}`}>
-                    <button onClick={() => { setSelectedProduct(p); setBomBrandFilter('auto'); }} className={`flex-1 text-left text-sm ${selectedProduct?.id === p.id ? 'text-indigo-700 font-medium' : 'text-slate-600'}`}>
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 ${p.brand === 'WV' ? 'bg-blue-100 text-blue-700' : p.brand === 'JM' ? 'bg-purple-100 text-purple-700' : p.brand === 'EZ' ? 'bg-amber-100 text-amber-700' : p.brand === 'FP' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>{p.brand || '공용'}</span>
+                };
+                const renderProductItem = (p) => (
+                  <div key={p.id} className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${selectedProduct?.id === p.id ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:border-slate-400'}`}>
+                    <button onClick={() => { setSelectedProduct(p); setBomBrandFilter('auto'); }} className={`flex-1 text-left text-sm ${selectedProduct?.id === p.id ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
+                      <span className="inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 bg-slate-100 text-slate-700">{p.brand || '공용'}</span>
                       {p.name}
                     </button>
                     <div className="relative shrink-0">
@@ -2382,7 +2409,7 @@ export default function App({ user }) {
                             <button onClick={() => startEditProduct(p)} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                               <Pencil size={14} /> 수정
                             </button>
-                            <button onClick={() => { setOpenProductMenuId(null); deleteProduct(p.id); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
+                            <button onClick={() => { setOpenProductMenuId(null); deleteProduct(p.id); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 flex items-center gap-2 text-slate-600">
                               <Trash2 size={14} /> 삭제
                             </button>
                           </div>
@@ -2390,8 +2417,68 @@ export default function App({ user }) {
                       )}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+
+                // 검색 모드: 검색어 있으면 전체에서 필터링
+                if (productSearch) {
+                  const hits = products.filter(productMatchesSearch);
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-slate-400">검색 결과 {hits.length}개</p>
+                      {hits.map(renderProductItem)}
+                      {hits.length === 0 && <p className="text-sm text-slate-400 text-center py-6">검색 결과가 없습니다.</p>}
+                    </div>
+                  );
+                }
+
+                // 폴더 모드 (브랜드 선택 안함): 신규 상품 + 브랜드 폴더 그리드
+                if (!productBrandFolder) {
+                  const newProducts = products.filter(isNewProduct);
+                  const brands = brandList.filter(b => b !== '전체');
+                  return (
+                    <div className="space-y-4">
+                      {/* 신규 상품 섹션 (1분 이내) */}
+                      {newProducts.length > 0 && (
+                        <div className="space-y-2 p-3 rounded-lg border border-slate-300 bg-slate-50/50">
+                          <p className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                            <Plus size={12} /> 새로 등록한 상품 <span className="text-slate-400 font-normal">({newProducts.length}개 · 1분간 표시)</span>
+                          </p>
+                          {newProducts.map(renderProductItem)}
+                        </div>
+                      )}
+                      {/* 브랜드 폴더 그리드 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {brands.map(brand => {
+                          const count = products.filter(p => (p.brand || '공용') === brand && !isNewProduct(p)).length;
+                          return (
+                            <button key={brand} onClick={() => setProductBrandFolder(brand)}
+                              className="flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 border-slate-200 bg-slate-50 hover:shadow-md hover:border-slate-400 transition-all group">
+                              <FolderOpen size={22} className="text-slate-600 group-hover:scale-110 transition-transform" />
+                              <div className="text-center">
+                                <p className="font-bold text-sm text-slate-700">{brand}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{count}개</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // 특정 브랜드 폴더 내부: 해당 브랜드 상품만 표시 (신규 상품 제외)
+                const folderProducts = products.filter(p => (p.brand || '공용') === productBrandFolder && !isNewProduct(p));
+                return (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-400">{folderProducts.length}개 상품</p>
+                    {folderProducts.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-6">이 브랜드에 등록된 상품이 없습니다.</p>
+                    ) : (
+                      folderProducts.map(renderProductItem)
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 md:col-span-2">

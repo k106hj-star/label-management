@@ -1676,27 +1676,29 @@ export default function App({ user }) {
     finally { setPdfLoading(false); }
   };
 
+  // 로그 카드 스타일 - 모두 회색 톤으로 통일
+  const LOG_CARD_STYLE = { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700' };
   const logTypeConfig = {
-    deduct:       { border: 'border-orange-200', bg: 'bg-orange-50/40',  badge: 'bg-orange-100 text-orange-700',   label: '📦 발주 확정 (재고 차감)' },
-    restore:      { border: 'border-blue-200',   bg: 'bg-blue-50/40',    badge: 'bg-blue-100 text-blue-700',       label: '↩ 확정 취소 (재고 원복)' },
-    add:          { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',     label: '➕ 라벨 신규 등록' },
-    delete:       { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 라벨 삭제' },
-    edit:         { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 라벨 수정' },
-    bulk_delete:  { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 일괄 삭제' },
-    bulk_edit:    { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 일괄 수정' },
-    csv_import:   { border: 'border-teal-200',   bg: 'bg-teal-50/40',    badge: 'bg-teal-100 text-teal-700',       label: '📄 CSV 가져오기' },
-    safety_stock: { border: 'border-amber-200',  bg: 'bg-amber-50/40',   badge: 'bg-amber-100 text-amber-700',     label: '🔒 안전재고 변경' },
-    image_update: { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',         label: '🖼 이미지 업데이트' },
-    image_sync:   { border: 'border-sky-200',    bg: 'bg-sky-50/40',     badge: 'bg-sky-100 text-sky-700',         label: '🔄 이미지 자동 매핑' },
-    order_save:   { border: 'border-emerald-200',bg: 'bg-emerald-50/40', badge: 'bg-emerald-100 text-emerald-700', label: '💾 발주 저장' },
-    order_delete: { border: 'border-red-200',    bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 발주 삭제' },
-    order_delete_all: { border: 'border-red-200',bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 발주 전체 삭제' },
-    order_edit:   { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 발주 수정' },
-    product_add:  { border: 'border-green-200',  bg: 'bg-green-50/40',   badge: 'bg-green-100 text-green-700',     label: '➕ 상품 등록' },
-    product_delete:{ border: 'border-red-200',   bg: 'bg-red-50/40',     badge: 'bg-red-100 text-red-700',         label: '🗑 상품 삭제' },
-    product_edit: { border: 'border-violet-200', bg: 'bg-violet-50/40',  badge: 'bg-violet-100 text-violet-700',   label: '✏️ 상품 수정' },
-    bom_add:      { border: 'border-indigo-200', bg: 'bg-indigo-50/40',  badge: 'bg-indigo-100 text-indigo-700',   label: '🔗 BOM 라벨 추가' },
-    bom_remove:   { border: 'border-rose-200',   bg: 'bg-rose-50/40',    badge: 'bg-rose-100 text-rose-700',       label: '✂️ BOM 라벨 제거' },
+    deduct:           { ...LOG_CARD_STYLE, label: '📦 발주 확정 (재고 차감)' },
+    restore:          { ...LOG_CARD_STYLE, label: '↩ 확정 취소 (재고 원복)' },
+    add:              { ...LOG_CARD_STYLE, label: '➕ 라벨 신규 등록' },
+    delete:           { ...LOG_CARD_STYLE, label: '🗑 라벨 삭제' },
+    edit:             { ...LOG_CARD_STYLE, label: '✏️ 라벨 수정' },
+    bulk_delete:      { ...LOG_CARD_STYLE, label: '🗑 일괄 삭제' },
+    bulk_edit:        { ...LOG_CARD_STYLE, label: '✏️ 일괄 수정' },
+    csv_import:       { ...LOG_CARD_STYLE, label: '📄 CSV 가져오기' },
+    safety_stock:     { ...LOG_CARD_STYLE, label: '🔒 안전재고 변경' },
+    image_update:     { ...LOG_CARD_STYLE, label: '🖼 이미지 업데이트' },
+    image_sync:       { ...LOG_CARD_STYLE, label: '🔄 이미지 자동 매핑' },
+    order_save:       { ...LOG_CARD_STYLE, label: '💾 발주 저장' },
+    order_delete:     { ...LOG_CARD_STYLE, label: '🗑 발주 삭제' },
+    order_delete_all: { ...LOG_CARD_STYLE, label: '🗑 발주 전체 삭제' },
+    order_edit:       { ...LOG_CARD_STYLE, label: '✏️ 발주 수정' },
+    product_add:      { ...LOG_CARD_STYLE, label: '➕ 상품 등록' },
+    product_delete:   { ...LOG_CARD_STYLE, label: '🗑 상품 삭제' },
+    product_edit:     { ...LOG_CARD_STYLE, label: '✏️ 상품 수정' },
+    bom_add:          { ...LOG_CARD_STYLE, label: '🔗 BOM 라벨 추가' },
+    bom_remove:       { ...LOG_CARD_STYLE, label: '✂️ BOM 라벨 제거' },
   };
   const renderLogCard = (log) => {
     const c = logTypeConfig[log.type] || { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700', label: log.type };
@@ -1763,7 +1765,7 @@ export default function App({ user }) {
                     <td className="py-1.5 text-center text-slate-500">{item.size}</td>
                     <td className="py-1.5 text-right text-slate-500">{item.before?.toLocaleString()}</td>
                     <td className="py-1.5 text-center font-bold">
-                      <span className={item.change < 0 ? 'text-red-500' : 'text-blue-500'}>{item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}</span>
+                      <span className="text-slate-700">{item.change > 0 ? '+' : ''}{item.change?.toLocaleString()}</span>
                     </td>
                     <td className="py-1.5 text-right font-semibold text-slate-800">{item.after?.toLocaleString()}</td>
                   </tr>
@@ -1777,9 +1779,9 @@ export default function App({ user }) {
             {log.changes.map((ch, i) => (
               <div key={i} className="text-xs flex items-center gap-2">
                 <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
-                <span className="text-red-400 line-through">{String(ch.before)}</span>
+                <span className="text-slate-400 line-through">{String(ch.before)}</span>
                 <span className="text-slate-300">→</span>
-                <span className="text-blue-500">{String(ch.after)}</span>
+                <span className="text-slate-700 font-medium">{String(ch.after)}</span>
               </div>
             ))}
           </div>
@@ -1789,14 +1791,14 @@ export default function App({ user }) {
         )}
         {log.type === 'bulk_edit' && log.fields && (
           <div className="mt-2 pl-1 space-y-0.5">
-            {log.fields.brand && <div className="text-xs text-slate-500">브랜드 → <span className="text-blue-500 font-medium">{log.fields.brand}</span></div>}
-            {log.fields.type && <div className="text-xs text-slate-500">종류 → <span className="text-blue-500 font-medium">{log.fields.type}</span></div>}
-            {log.fields.vendor && <div className="text-xs text-slate-500">공급처 → <span className="text-blue-500 font-medium">{log.fields.vendor}</span></div>}
+            {log.fields.brand && <div className="text-xs text-slate-500">브랜드 → <span className="text-slate-700 font-medium">{log.fields.brand}</span></div>}
+            {log.fields.type && <div className="text-xs text-slate-500">종류 → <span className="text-slate-700 font-medium">{log.fields.type}</span></div>}
+            {log.fields.vendor && <div className="text-xs text-slate-500">공급처 → <span className="text-slate-700 font-medium">{log.fields.vendor}</span></div>}
           </div>
         )}
         {log.type === 'safety_stock' && (
           <div className="mt-2 text-xs text-slate-500 pl-1">
-            {log.labelName} ({log.labelCode}): <span className="text-red-400">{log.before}</span> → <span className="text-blue-500 font-medium">{log.after}</span>
+            {log.labelName} ({log.labelCode}): <span className="text-slate-400">{log.before}</span> → <span className="text-slate-700 font-medium">{log.after}</span>
           </div>
         )}
         {log.type === 'csv_import' && log.fileName && (
@@ -1804,7 +1806,7 @@ export default function App({ user }) {
             <div className="text-xs text-slate-400">{log.fileName}</div>
             {log.newItems?.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-green-700 mb-1">➕ 신규 등록 {log.newItems.length}개</p>
+                <p className="text-xs font-semibold text-slate-700 mb-1">➕ 신규 등록 {log.newItems.length}개</p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead><tr className="text-slate-400 border-b border-slate-100">
@@ -1831,18 +1833,18 @@ export default function App({ user }) {
             )}
             {log.updatedItems?.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-amber-700 mb-1">✏️ 업데이트 {log.updatedItems.length}개</p>
+                <p className="text-xs font-semibold text-slate-700 mb-1">✏️ 업데이트 {log.updatedItems.length}개</p>
                 <div className="space-y-1">
                   {log.updatedItems.map((item, i) => (
-                    <div key={i} className="text-xs bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                    <div key={i} className="text-xs bg-slate-50 border border-slate-200 rounded px-2 py-1.5">
                       <span className="font-medium text-slate-700">{item.name} ({item.code})</span>
                       <div className="mt-0.5 space-y-0.5">
                         {item.changes.map((ch, j) => (
                           <div key={j} className="flex items-center gap-1.5">
                             <span className="text-slate-400 w-14 shrink-0">{ch.field}</span>
-                            <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                            <span className="text-slate-400 line-through">{String(ch.before ?? '(없음)')}</span>
                             <span className="text-slate-300">→</span>
-                            <span className="text-blue-500 font-medium">{String(ch.after)}</span>
+                            <span className="text-slate-700 font-medium">{String(ch.after)}</span>
                           </div>
                         ))}
                       </div>
@@ -1875,9 +1877,9 @@ export default function App({ user }) {
             {log.changes.map((ch, i) => (
               <div key={i} className="text-xs flex items-center gap-2">
                 <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
-                <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                <span className="text-slate-400 line-through">{String(ch.before ?? '(없음)')}</span>
                 <span className="text-slate-300">→</span>
-                <span className="text-blue-500">{String(ch.after ?? '(없음)')}</span>
+                <span className="text-slate-700 font-medium">{String(ch.after ?? '(없음)')}</span>
               </div>
             ))}
           </div>
@@ -1893,9 +1895,9 @@ export default function App({ user }) {
             {log.changes.map((ch, i) => (
               <div key={i} className="text-xs flex items-center gap-2">
                 <span className="text-slate-400 w-16 shrink-0">{ch.field}</span>
-                <span className="text-red-400 line-through">{String(ch.before ?? '(없음)')}</span>
+                <span className="text-slate-400 line-through">{String(ch.before ?? '(없음)')}</span>
                 <span className="text-slate-300">→</span>
-                <span className="text-blue-500">{String(ch.after ?? '(없음)')}</span>
+                <span className="text-slate-700 font-medium">{String(ch.after ?? '(없음)')}</span>
               </div>
             ))}
           </div>
@@ -1903,7 +1905,7 @@ export default function App({ user }) {
         {(log.type === 'bom_add' || log.type === 'bom_remove') && (
           <div className="mt-2 text-xs text-slate-500 pl-1 space-y-0.5">
             <div>상품: <span className="text-slate-700 font-medium">{log.productName}</span></div>
-            {log.labelNames?.length > 0 && <div>라벨: {log.labelNames.map((n, i) => <span key={i} className="inline-block bg-indigo-50 text-indigo-700 rounded px-1.5 py-0.5 mr-1 mb-0.5">{n}</span>)}</div>}
+            {log.labelNames?.length > 0 && <div>라벨: {log.labelNames.map((n, i) => <span key={i} className="inline-block bg-slate-100 text-slate-700 rounded px-1.5 py-0.5 mr-1 mb-0.5">{n}</span>)}</div>}
             {log.qty != null && <div>수량/단위: <span className="text-slate-700 font-medium">{log.qty}개</span></div>}
           </div>
         )}

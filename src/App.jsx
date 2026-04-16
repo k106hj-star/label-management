@@ -415,23 +415,24 @@ export default function App({ user }) {
   // 트랜잭션 진행 중 useEffect 쓰기 차단 플래그
   const transactionInProgress = useRef(false);
   useEffect(() => {
-    // 초기 로컬 데이터가 없으면 Firestore에서 먼저 로드
-    if (!labelsWasInLS.current) {
-      getDoc(doc(db, 'settings', 'labels')).then(snap => {
-        if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-          setLabels(snap.data().list);
-          localStorage.setItem('label_inventory', JSON.stringify(snap.data().list));
+    // ✅ 항상 Firestore를 우선으로 로드 (localStorage가 Firestore를 덮어쓰지 않도록)
+    // 다중 사용자 환경에서 오래된 localStorage가 최신 Firestore 데이터를 덮어쓰는 버그 방지
+    getDoc(doc(db, 'settings', 'labels')).then(snap => {
+      const fsHasData = snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0;
+      if (fsHasData) {
+        // Firestore에 데이터가 있으면 무조건 Firestore를 신뢰하고 로컬 갱신
+        const fsData = snap.data().list;
+        setLabels(fsData);
+        localStorage.setItem('label_inventory', JSON.stringify(fsData));
+        labelsLastWriteJson.current = JSON.stringify(fsData);
+      } else if (labelsWasInLS.current) {
+        // Firestore가 비어있을 때만 localStorage를 업로드 (데이터 최초 복구용)
+        const localRaw = localStorage.getItem('label_inventory');
+        if (localRaw) {
+          try { setDoc(doc(db, 'settings', 'labels'), { list: JSON.parse(localRaw) }).catch(() => {}); } catch(e) {}
         }
-      }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
-    } else {
-      // 로컬 데이터가 있으면 즉시 저장 가능
-      labelsCanSave.current = true;
-      // 최초 로컬 → Firestore 업로드
-      const localRaw = localStorage.getItem('label_inventory');
-      if (localRaw) {
-        try { setDoc(doc(db, 'settings', 'labels'), { list: JSON.parse(localRaw) }).catch(() => {}); } catch(e) {}
       }
-    }
+    }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
     // 실시간 리스너: 다른 사용자의 변경만 반영 (내 쓰기는 hasPendingWrites로 스킵)
     const unsub = onSnapshot(doc(db, 'settings', 'labels'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;

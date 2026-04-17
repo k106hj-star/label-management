@@ -23,8 +23,15 @@ export default function LoginPage() {
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
       // Firestore에서 active 여부 확인
+      // [H5 수정] users 문서가 없거나 active=false면 거부
+      // 기존: exists && active===false 일 때만 차단 → 문서 미존재 시 무조건 통과
       const userSnap = await getDoc(doc(db, 'users', cred.user.uid));
-      if (userSnap.exists() && userSnap.data().active === false) {
+      if (!userSnap.exists()) {
+        await signOut(auth);
+        setError('등록되지 않은 계정입니다. 관리자에게 계정 활성화를 요청해주세요.');
+        return;
+      }
+      if (userSnap.data().active === false) {
         await signOut(auth);
         setError('비활성화된 계정입니다. 관리자에게 문의하세요.');
         return;

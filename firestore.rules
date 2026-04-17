@@ -1,8 +1,36 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 인증된 사용자만 접근 가능
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+    function isActive() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+
+    // settings: 로그인 + 활성 사용자만 읽기/쓰기
     match /settings/{document} {
-      allow read, write: if true;
+      allow read: if isSignedIn();
+      allow write: if isActive();
+    }
+
+    // users: 관리자는 모두 읽기/쓰기, 일반 사용자는 본인 문서만 읽기 가능
+    //        isAdmin/active 필드는 관리자만 변경 가능
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (isSignedIn() && request.auth.uid == userId &&
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin','active']));
     }
   }
 }

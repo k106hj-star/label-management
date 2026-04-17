@@ -90,9 +90,11 @@ function parseCSVLine(line) {
 }
 
 function parseCSV(csvText) {
-  const lines = csvText.trim().split('\n');
+  // [L3 수정] BOM/CRLF 정규화
+  const cleanText = csvText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+  const lines = cleanText.trim().split('\n');
   if (lines.length < 2) return [];
-  const headers = parseCSVLine(lines[0]).map(h => h.trim());
+  const headers = parseCSVLine(lines[0]).map(h => h.replace(/^\uFEFF/, '').trim());
   // 헤더명으로 컬럼 인덱스 매핑 (구버전/신버전 모두 지원)
   const col = (names) => {
     for (const n of names) {
@@ -123,6 +125,8 @@ function parseCSV(csvText) {
     const priceRaw   = get(iPrice).replace(/,/g, '');
     const safetyRaw  = get(iSafety).replace(/,/g, '');
     const reserveRaw = get(iReserve).replace(/,/g, '');
+    // [C2 수정] 빈 값은 undefined로 두어 CSV 재업로드 시 기존 재고/단가를 0으로 덮어쓰지 않도록 함
+    const num = (raw) => (!raw || raw === '-') ? undefined : (parseInt(raw) || 0);
     results.push({
       id: i,
       brand: get(iBrand),
@@ -130,10 +134,10 @@ function parseCSV(csvText) {
       name: get(iName),
       code: get(iCode),
       size: get(iSize),
-      stock: (!stockRaw || stockRaw === '-') ? 0 : (parseInt(stockRaw) || 0),
-      safetyStock: (!safetyRaw || safetyRaw === '-') ? 0 : (parseInt(safetyRaw) || 0),
-      reserveStock: (!reserveRaw || reserveRaw === '-') ? 0 : (parseInt(reserveRaw) || 0),
-      price: (!priceRaw || priceRaw === '-') ? 0 : (parseInt(priceRaw) || 0),
+      stock: num(stockRaw),
+      safetyStock: num(safetyRaw),
+      reserveStock: num(reserveRaw),
+      price: num(priceRaw),
       vendor: get(iVendor),
       img: ''
     });
@@ -349,14 +353,17 @@ export default function App({ user }) {
   const [currentUserName, setCurrentUserName] = useState('');
 
   // Firestore에서 관리자 여부 + 사용자 이름 확인
+  // [L2] user 변경 시 isAdmin을 즉시 false로 초기화하여 이전 사용자 플래그가 잠깐 새 사용자에게 보이는 현상 방지
   useEffect(() => {
+    setIsAdmin(false);
+    setCurrentUserName('');
     if (!user?.uid) return;
     getDoc(doc(db, 'users', user.uid)).then(snap => {
       if (snap.exists()) {
         setIsAdmin(!!snap.data().isAdmin);
         setCurrentUserName(snap.data().name || snap.data().displayName || user.displayName || '');
       }
-    }).catch(() => {});
+    }).catch((e) => console.error('[isAdmin] 조회 실패:', e));
   }, [user?.uid]);
 
   const [labels, setLabels] = useState(() => {
@@ -429,10 +436,10 @@ export default function App({ user }) {
         // Firestore가 비어있을 때만 localStorage를 업로드 (데이터 최초 복구용)
         const localRaw = localStorage.getItem('label_inventory');
         if (localRaw) {
-          try { setDoc(doc(db, 'settings', 'labels'), { list: JSON.parse(localRaw) }).catch(() => {}); } catch(e) {}
+          try { setDoc(doc(db, 'settings', 'labels'), { list: JSON.parse(localRaw) }).catch((e) => console.error('[labels] 초기 복구 저장 실패:', e)); } catch(e) { console.error('[labels] 초기 복구 실패:', e); }
         }
       }
-    }).catch(() => {}).finally(() => { labelsCanSave.current = true; });
+    }).catch((e) => console.error('[labels] 초기 로드 실패:', e)).finally(() => { labelsCanSave.current = true; });
     // 실시간 리스너: 다른 사용자의 변경만 반영 (내 쓰기는 hasPendingWrites로 스킵)
     const unsub = onSnapshot(doc(db, 'settings', 'labels'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
@@ -453,66 +460,53 @@ export default function App({ user }) {
     try {
       const clean = JSON.parse(JSON.stringify(labels));
       labelsLastWriteJson.current = JSON.stringify(clean);
-      setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch(() => {});
-    } catch(e) {}
+      setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch((e) => console.error('[labels] 저장 실패:', e));
+    } catch(e) { console.error('[labels] 저장 직렬화 실패:', e); }
   }, [labels]);
 
   // ── Products 저장 헬퍼: localStorage + Firestore + Firebase Storage 동시 저장 ──
   const saveProductsEverywhere = (data) => {
-    try { localStorage.setItem('label_products', JSON.stringify(data)); } catch(e) {}
+    try { localStorage.setItem('label_products', JSON.stringify(data)); } catch(e) { console.error('[products] localStorage 저장 실패:', e); }
     try {
       const clean = JSON.parse(JSON.stringify(data));
       // Firestore 저장
-      setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch(() => {});
+      setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch((e) => console.error('[products] Firestore 저장 실패:', e));
       // Firebase Storage 백업 (products-backup.json)
       const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
       const backupRef = ref(storage, 'backups/products-backup.json');
-      uploadBytes(backupRef, jsonBlob).catch(() => {});
-    } catch(e) {}
+      uploadBytes(backupRef, jsonBlob).catch((e) => console.error('[products] Storage 백업 실패:', e));
+    } catch(e) { console.error('[products] 저장 직렬화 실패:', e); }
   };
 
-  // Products Firestore 동기화: 로컬과 Firestore를 BOM 단위로 안전하게 병합
+  // Products Firestore 동기화 — [H3 수정] Firestore를 진실공급원으로
   const firestoreLoaded = useRef(false);
   const productsCanSave = useRef(false);
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
     getDoc(doc(db, 'settings', 'products')).then(snap => {
-      const localRaw = localStorage.getItem('label_products');
-      const localData = localRaw ? JSON.parse(localRaw) : [];
-      const fsData = (snap.exists() && Array.isArray(snap.data()?.list)) ? snap.data().list : [];
-
-      // 로컬 데이터를 기준으로 Firestore 데이터와 BOM 병합
-      // - 같은 id의 상품이 있으면: BOM 항목을 합집합으로 병합 (로컬 우선)
-      // - 로컬에 없는 상품만 Firestore에서 추가
-      const merged = localData.map(lp => {
-        const fp = fsData.find(f => f.id === lp.id);
-        if (!fp) return lp;
-        // BOM 병합: 로컬 BOM + Firestore에만 있는 항목 추가
-        const localBom = lp.bom || [];
-        const fsBom = fp.bom || [];
-        const mergedBom = [...localBom];
-        fsBom.forEach(fb => {
-          if (!mergedBom.find(lb => lb.labelId === fb.labelId)) mergedBom.push(fb);
-        });
-        // BOM 개수가 많은 쪽을 우선 사용하되 병합 결과 적용
-        return { ...lp, bom: mergedBom };
-      });
-      // Firestore에만 있는 상품 추가
-      fsData.forEach(fp => {
-        if (!merged.find(m => m.id === fp.id)) merged.push(fp);
-      });
-
-      setProducts(merged);
-      localStorage.setItem('label_products', JSON.stringify(merged));
-      // 병합 결과를 Firestore + Storage에 저장
-      try {
-        const clean = JSON.parse(JSON.stringify(merged));
-        setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch(() => {});
-        const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
-        uploadBytes(ref(storage, 'backups/products-backup.json'), jsonBlob).catch(() => {});
-      } catch(e) {}
-    }).catch(() => {}).finally(() => { productsCanSave.current = true; });
+      const fsHasData = snap.exists() && Array.isArray(snap.data()?.list) && snap.data().list.length > 0;
+      if (fsHasData) {
+        // Firestore에 데이터가 있으면 Firestore를 그대로 사용
+        // 이전에는 로컬 BOM과 합집합 병합했으나, 이로 인해 삭제된 BOM 항목이 부활하는 문제가 있음
+        const fsData = snap.data().list;
+        setProducts(fsData);
+        localStorage.setItem('label_products', JSON.stringify(fsData));
+      } else {
+        // Firestore가 비어있을 때만 로컬을 업로드 (최초 복구용)
+        const localRaw = localStorage.getItem('label_products');
+        if (localRaw) {
+          try {
+            const localData = JSON.parse(localRaw);
+            setProducts(localData);
+            const clean = JSON.parse(JSON.stringify(localData));
+            setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch((e) => console.error('[products] 초기 복구 저장 실패:', e));
+            const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+            uploadBytes(ref(storage, 'backups/products-backup.json'), jsonBlob).catch((e) => console.error('[products] 백업 실패:', e));
+          } catch(e) { console.error('[products] 초기 복구 실패:', e); }
+        }
+      }
+    }).catch((e) => console.error('[products] 초기 로드 실패:', e)).finally(() => { productsCanSave.current = true; });
   }, []);
 
   // products 변경 시 localStorage + Firestore + Storage에 즉시 저장
@@ -722,7 +716,15 @@ export default function App({ user }) {
       parsed.forEach((p, idx) => {
         const existing = labels.find(l => l.name === p.name && l.code === p.code);
         if (!existing) {
-          newLabels.push({ ...p, id: Date.now() + idx });
+          // [C2 수정] 신규 라벨은 undefined를 0으로 기본값 처리
+          newLabels.push({
+            ...p,
+            stock: p.stock ?? 0,
+            safetyStock: p.safetyStock ?? 0,
+            reserveStock: p.reserveStock ?? 0,
+            price: p.price ?? 0,
+            id: Date.now() + idx,
+          });
         } else {
           const fieldsToFill = {};
           // 현재고: CSV 값이 현재와 다르면 항상 업데이트
@@ -804,9 +806,14 @@ export default function App({ user }) {
       if (label) addLog({ type: 'delete', labelId: id, labelName: label.name, labelCode: label.code, labelBrand: label.brand, summary: `라벨 삭제: ${label.name} (${label.code})` });
       setProducts(prev => prev.map(p => ({
         ...p,
-        bom: p.bom.filter(b => b.labelId !== id)
+        bom: (p.bom || []).filter(b => b.labelId !== id)
       })));
-      setSelectedProduct(prev => prev ? { ...prev, bom: prev.bom.filter(b => b.labelId !== id) } : null);
+      setSelectedProduct(prev => prev ? { ...prev, bom: (prev.bom || []).filter(b => b.labelId !== id) } : null);
+      // [H4 수정] savedOrders 안의 해당 라벨 참조도 제거 (PDF/재열람 시 undefined 방지)
+      setSavedOrders(prev => prev.map(o => ({
+        ...o,
+        details: (o.details || []).filter(d => d.id !== id)
+      })));
     }
   };
 
@@ -970,8 +977,14 @@ export default function App({ user }) {
   const [openOrderMenuId, setOpenOrderMenuId] = useState(null);
   const [orderMenuPos, setOrderMenuPos] = useState({ top: 0, left: 0 });
 
+  // [C5 수정] 발주 확정/취소 진행 중인 order id 집합 - 연타 방지
+  const [processingOrderIds, setProcessingOrderIds] = useState(new Set());
+  const isProcessingOrder = (orderId) => processingOrderIds.has(orderId);
+
   const applyOrderToStock = async (order) => {
     if (order.applied) { alert('이미 발주 확정된 내역입니다.'); return; }
+    // [C5] 이미 처리 중이면 무시
+    if (processingOrderIds.has(order.id)) return;
     const orderItems = (order.details || []).filter(d => d.shortage > 0);
     if (orderItems.length === 0) { alert('발주 수량이 없습니다.'); return; }
     const confirmMsg = `발주 확정 시 재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => `• ${d.labelName || d.name} (${d.size}): ${d.shortage.toLocaleString()}개`).join('\n')}\n\n진행하시겠습니까?`;
@@ -979,141 +992,113 @@ export default function App({ user }) {
     const appliedAt = new Date().toLocaleString('ko-KR');
     const _uid = user?.email ? user.email.split('@')[0] : '';
     const _name = currentUserName || user?.displayName || '';
+    setProcessingOrderIds(prev => { const n = new Set(prev); n.add(order.id); return n; });
     transactionInProgress.current = true; // useEffect 쓰기 차단
     try {
-      // runTransaction: 동시 접속 시 재고 이중 차감 방지 (원자적 처리)
+      // [C4 수정] 트랜잭션: Firestore만 신뢰 (localStorage 병합 제거)
+      // 이유: 로컬의 오래된 단가/공급처 등이 Firestore 최신 값을 덮어쓰는 문제 방지
       let logItems = [];
+      let finalLabels = [];
+      let finalOrders = [];
       await runTransaction(db, async (tx) => {
         const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsOrders = ordersSnap.data()?.list || [];
         const fsLabels = labelsSnap.data()?.list || [];
 
-        // ── 로컬 데이터를 기준으로 병합 (Firestore에 없는 항목 보존) ──
-        const localOrders = JSON.parse(localStorage.getItem('label_saved_orders') || '[]');
-        const mergedOrders = [...localOrders];
-        fsOrders.forEach(fo => {
-          const idx = mergedOrders.findIndex(o => o.id === fo.id);
-          if (idx === -1) mergedOrders.push(fo);
-          else mergedOrders[idx] = { ...fo, ...mergedOrders[idx],
-            applied: mergedOrders[idx].applied || fo.applied,
-            appliedAt: mergedOrders[idx].appliedAt || fo.appliedAt };
-        });
+        // 이미 다른 사용자가 확정했는지 체크 (Firestore 기준)
+        const targetOrder = fsOrders.find(o => o.id === order.id);
+        if (!targetOrder) throw new Error('order_not_found');
+        if (targetOrder.applied) throw new Error('already_applied');
 
-        const localLabels = JSON.parse(localStorage.getItem('label_inventory') || '[]');
-        const mergedLabels = localLabels.map(ll => {
-          const fl = fsLabels.find(f => f.id === ll.id);
-          // Firestore stock이 더 최신 (다른 사용자가 차감했을 수 있음)
-          return fl ? { ...ll, stock: fl.stock } : ll;
-        });
-        fsLabels.forEach(fl => { if (!mergedLabels.find(l => l.id === fl.id)) mergedLabels.push(fl); });
-
-        // 이미 다른 사용자가 확정했는지 체크
-        const targetOrder = mergedOrders.find(o => o.id === order.id);
-        if (targetOrder?.applied) throw new Error('already_applied');
-
-        // 재고 차감
+        // 재고 차감 (Firestore 기준)
         logItems = orderItems.map(d => {
-          const lbl = mergedLabels.find(l => l.id === d.id);
-          const before = lbl ? lbl.stock : 0;
+          const lbl = fsLabels.find(l => l.id === d.id);
+          const before = lbl ? Number(lbl.stock || 0) : 0;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
         });
-        const updatedLabels = mergedLabels.map(lbl => {
+        const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
-          return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
+          return matched ? { ...lbl, stock: Number(lbl.stock || 0) - matched.shortage } : lbl;
         });
-        const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
-        // undefined 값 제거 후 Firestore에 저장 (undefined는 Firestore 미지원)
-        const cleanLabels = JSON.parse(JSON.stringify(updatedLabels));
-        const cleanOrders = JSON.parse(JSON.stringify(updatedOrders));
-        tx.set(doc(db, 'settings', 'labels'), { list: cleanLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: cleanOrders });
+        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
+        finalLabels = JSON.parse(JSON.stringify(updatedLabels));
+        finalOrders = JSON.parse(JSON.stringify(updatedOrders));
+        tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: finalOrders });
       });
-      // 트랜잭션 성공 → 로컬 상태 업데이트
-      setLabels(prev => prev.map(lbl => {
-        const matched = orderItems.find(d => d.id === lbl.id);
-        return matched ? { ...lbl, stock: lbl.stock - matched.shortage } : lbl;
-      }));
-      setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o));
+      // 트랜잭션 성공 → 로컬 상태를 Firestore의 최종 결과로 교체
+      setLabels(finalLabels);
+      setSavedOrders(finalOrders);
       if (viewOrder?.id === order.id) setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
       setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _uid, userName: _name }, ...prev]);
       alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
     } catch(e) {
+      console.error('[applyOrderToStock] 실패:', e);
       if (e.message === 'already_applied') alert('이미 다른 사용자가 발주 확정했습니다. 새로고침 후 확인하세요.');
+      else if (e.message === 'order_not_found') alert('발주 내역이 삭제되었습니다. 새로고침 후 확인하세요.');
       else alert('발주 확정 중 오류가 발생했습니다: ' + e.message);
     } finally {
-      transactionInProgress.current = false; // useEffect 쓰기 재개
+      transactionInProgress.current = false;
+      setProcessingOrderIds(prev => { const n = new Set(prev); n.delete(order.id); return n; });
     }
   };
 
   const cancelOrderFromStock = async (order) => {
     if (!order.applied) return;
+    if (processingOrderIds.has(order.id)) return; // [C5] 연타 방지
     const orderItems = (order.details || []).filter(d => d.shortage > 0);
     if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 재고 수량이 원복됩니다.`)) return;
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';
-    transactionInProgress.current = true; // useEffect 쓰기 차단
+    setProcessingOrderIds(prev => { const n = new Set(prev); n.add(order.id); return n; });
+    transactionInProgress.current = true;
     try {
+      // [C4] Firestore만 신뢰
       let logItems = [];
+      let finalLabels = [];
+      let finalOrders = [];
       await runTransaction(db, async (tx) => {
         const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsOrders = ordersSnap.data()?.list || [];
         const fsLabels = labelsSnap.data()?.list || [];
 
-        // 로컬 + Firestore 병합
-        const localOrders = JSON.parse(localStorage.getItem('label_saved_orders') || '[]');
-        const mergedOrders = [...localOrders];
-        fsOrders.forEach(fo => {
-          const idx = mergedOrders.findIndex(o => o.id === fo.id);
-          if (idx === -1) mergedOrders.push(fo);
-          else mergedOrders[idx] = { ...fo, ...mergedOrders[idx],
-            applied: mergedOrders[idx].applied || fo.applied,
-            appliedAt: mergedOrders[idx].appliedAt || fo.appliedAt };
-        });
-
-        const localLabels = JSON.parse(localStorage.getItem('label_inventory') || '[]');
-        const mergedLabels = localLabels.map(ll => {
-          const fl = fsLabels.find(f => f.id === ll.id);
-          return fl ? { ...ll, stock: fl.stock } : ll;
-        });
-        fsLabels.forEach(fl => { if (!mergedLabels.find(l => l.id === fl.id)) mergedLabels.push(fl); });
-
-        // 이미 취소됐는지 체크
-        const targetOrder = mergedOrders.find(o => o.id === order.id);
-        if (targetOrder && !targetOrder.applied) throw new Error('already_cancelled');
+        const targetOrder = fsOrders.find(o => o.id === order.id);
+        if (!targetOrder) throw new Error('order_not_found');
+        if (!targetOrder.applied) throw new Error('already_cancelled');
 
         logItems = orderItems.map(d => {
-          const lbl = mergedLabels.find(l => l.id === d.id);
-          const before = lbl ? lbl.stock : 0;
+          const lbl = fsLabels.find(l => l.id === d.id);
+          const before = lbl ? Number(lbl.stock || 0) : 0;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: +d.shortage, after: before + d.shortage };
         });
-        const updatedLabels = mergedLabels.map(lbl => {
+        const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
-          return matched ? { ...lbl, stock: lbl.stock + matched.shortage } : lbl;
+          return matched ? { ...lbl, stock: Number(lbl.stock || 0) + matched.shortage } : lbl;
         });
-        const updatedOrders = mergedOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
-        const cleanLabels = JSON.parse(JSON.stringify(updatedLabels));
-        const cleanOrders = JSON.parse(JSON.stringify(updatedOrders));
-        tx.set(doc(db, 'settings', 'labels'), { list: cleanLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: cleanOrders });
+        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
+        finalLabels = JSON.parse(JSON.stringify(updatedLabels));
+        finalOrders = JSON.parse(JSON.stringify(updatedOrders));
+        tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
+        tx.set(doc(db, 'settings', 'savedOrders'), { list: finalOrders });
       });
-      // 트랜잭션 성공 → 로컬 상태 업데이트
-      setLabels(prev => prev.map(label => {
-        const matched = orderItems.find(d => d.id === label.id);
-        return matched ? { ...label, stock: label.stock + matched.shortage } : label;
-      }));
-      setSavedOrders(prev => prev.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o));
+      // 트랜잭션 성공 → 로컬 상태를 Firestore 최종 결과로 교체
+      setLabels(finalLabels);
+      setSavedOrders(finalOrders);
       if (viewOrder?.id === order.id) {
         setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
       }
       setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
       alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
     } catch(e) {
+      console.error('[cancelOrderFromStock] 실패:', e);
       if (e.message === 'already_cancelled') alert('이미 취소된 발주입니다. 새로고침 후 확인하세요.');
+      else if (e.message === 'order_not_found') alert('발주 내역이 삭제되었습니다. 새로고침 후 확인하세요.');
       else alert('취소 처리 중 오류가 발생했습니다: ' + e.message);
     } finally {
-      transactionInProgress.current = false; // useEffect 쓰기 재개
+      transactionInProgress.current = false;
+      setProcessingOrderIds(prev => { const n = new Set(prev); n.delete(order.id); return n; });
     }
   };
 
@@ -1141,8 +1126,8 @@ export default function App({ user }) {
       localStorage.setItem('label_saved_orders', JSON.stringify(merged));
       const clean = JSON.parse(JSON.stringify(merged));
       ordersLastWriteJson.current = JSON.stringify(clean);
-      setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch(() => {});
-    }).catch(() => {}).finally(() => { ordersCanSave.current = true; });
+      setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch((e) => console.error('[savedOrders] 초기 저장 실패:', e));
+    }).catch((e) => console.error('[savedOrders] 초기 로드 실패:', e)).finally(() => { ordersCanSave.current = true; });
 
     // 실시간 리스너: 다른 사용자의 발주 확정/취소를 즉시 반영
     const unsub = onSnapshot(doc(db, 'settings', 'savedOrders'), { includeMetadataChanges: true }, (snap) => {
@@ -1179,7 +1164,7 @@ export default function App({ user }) {
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
       ordersLastWriteJson.current = JSON.stringify(cleanData);
-      setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch(() => {});
+      setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch((e) => console.error('[savedOrders] 저장 실패:', e));
     } catch(e) {}
   }, [savedOrders]);
 
@@ -1194,30 +1179,56 @@ export default function App({ user }) {
     return saved ? JSON.parse(saved) : [];
   });
   const logsCanSave = useRef(false);
+  const logsLastWriteJson = useRef('');
   const firestoreLogsLoaded = useRef(false);
   useEffect(() => {
     if (firestoreLogsLoaded.current) return;
     firestoreLogsLoaded.current = true;
+    // [C3 수정] Firestore 우선 로드 + onSnapshot 실시간 동기화
     getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
       if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
         const data = snap.data().list;
         setStockLogs(data);
         localStorage.setItem('label_stock_logs', JSON.stringify(data));
+        logsLastWriteJson.current = JSON.stringify(data);
       } else if (logsWasInLS.current) {
+        // Firestore가 비어있을 때만 localStorage로 복구
         try {
           const clean = JSON.parse(JSON.stringify(stockLogs));
-          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch(() => {});
-        } catch(e) {}
+          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch((e) => console.error('[stockLogs] 초기 복구 저장 실패:', e));
+        } catch(e) { console.error('[stockLogs] 초기 복구 실패:', e); }
       }
-    }).catch(() => {}).finally(() => { logsCanSave.current = true; });
+    }).catch((e) => console.error('[stockLogs] 초기 로드 실패:', e)).finally(() => { logsCanSave.current = true; });
+
+    // [H2 수정] 실시간 리스너 설치: 다른 사용자의 로그 변경 반영
+    const unsub = onSnapshot(doc(db, 'settings', 'stockLogs'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData)) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === logsLastWriteJson.current) return; // 내 쓰기 확정 스킵
+      // 로그는 append-only 병합: 양쪽의 유니크한 항목을 id 기준으로 합집합
+      setStockLogs(prev => {
+        const byId = new Map();
+        [...fsData, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
+        const merged = Array.from(byId.values()).sort((a, b) => {
+          const ta = typeof a.id === 'number' ? a.id : 0;
+          const tb = typeof b.id === 'number' ? b.id : 0;
+          return tb - ta;
+        });
+        return merged;
+      });
+    });
+    return () => unsub();
   }, []);
   useEffect(() => {
     try { localStorage.setItem('label_stock_logs', JSON.stringify(stockLogs)); } catch(e) {}
-    if (!logsCanSave.current) return;
+    if (!logsCanSave.current || transactionInProgress.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(stockLogs));
-      setDoc(doc(db, 'settings', 'stockLogs'), { list: cleanData }).catch(() => {});
-    } catch(e) {}
+      logsLastWriteJson.current = JSON.stringify(cleanData);
+      setDoc(doc(db, 'settings', 'stockLogs'), { list: cleanData }).catch((e) => console.error('[stockLogs] 저장 실패:', e));
+    } catch(e) { console.error('[stockLogs] 저장 직렬화 실패:', e); }
   }, [stockLogs]);
 
   const addLog = (entry) => {
@@ -1233,29 +1244,50 @@ export default function App({ user }) {
     return saved ? JSON.parse(saved) : [];
   });
   const docsCanSave = useRef(false);
+  const docsLastWriteJson = useRef('');
   const firestoreDocsLoaded = useRef(false);
   useEffect(() => {
     if (firestoreDocsLoaded.current) return;
     firestoreDocsLoaded.current = true;
+    // [H1 수정] length > 0 체크하여 빈 배열이 로컬을 덮어쓰지 않게 함
     getDoc(doc(db, 'settings', 'documents')).then(snap => {
-      if (snap.exists() && Array.isArray(snap.data().list)) {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
         const data = snap.data().list;
         setDocuments(data);
         localStorage.setItem('label_documents', JSON.stringify(data));
+        docsLastWriteJson.current = JSON.stringify(data);
       } else if (!!localStorage.getItem('label_documents')) {
         try {
           const clean = JSON.parse(JSON.stringify(documents));
-          setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch(() => {});
-        } catch(e) {}
+          setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch((e) => console.error('[documents] 초기 복구 저장 실패:', e));
+        } catch(e) { console.error('[documents] 초기 복구 실패:', e); }
       }
-    }).catch(() => {}).finally(() => { docsCanSave.current = true; });
+    }).catch((e) => console.error('[documents] 초기 로드 실패:', e)).finally(() => { docsCanSave.current = true; });
+
+    // [H2 수정] 실시간 리스너 설치: 다른 사용자의 파일 업로드/삭제 반영
+    const unsub = onSnapshot(doc(db, 'settings', 'documents'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData)) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === docsLastWriteJson.current) return;
+      // documents도 id 기반 병합 (append + 업데이트)
+      setDocuments(prev => {
+        const byId = new Map();
+        [...fsData, ...prev].forEach(d => { if (d && d.id != null) byId.set(d.id, d); });
+        return Array.from(byId.values());
+      });
+    });
+    return () => unsub();
   }, []);
   useEffect(() => {
     try { localStorage.setItem('label_documents', JSON.stringify(documents)); } catch(e) {}
-    if (!docsCanSave.current) return;
+    if (!docsCanSave.current || transactionInProgress.current) return;
     try {
-      setDoc(doc(db, 'settings', 'documents'), { list: JSON.parse(JSON.stringify(documents)) }).catch(() => {});
-    } catch(e) {}
+      const clean = JSON.parse(JSON.stringify(documents));
+      docsLastWriteJson.current = JSON.stringify(clean);
+      setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch((e) => console.error('[documents] 저장 실패:', e));
+    } catch(e) { console.error('[documents] 저장 직렬화 실패:', e); }
   }, [documents]);
 
   const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'재고리스트'|'재고로그'
@@ -1331,10 +1363,13 @@ export default function App({ user }) {
 
   const deleteDocument = async (docItem) => {
     if (!window.confirm(`"${docItem.name}" 을(를) 삭제하시겠습니까?`)) return;
-    try {
-      const storageRef = ref(storage, `documents/${docItem.storageName}`);
-      await deleteObject(storageRef).catch(() => {});
-    } catch(e) {}
+    // [M2 수정] storageName이 있을 때만 Storage 삭제 시도 (빈 값이면 경로 조립 시 오류)
+    if (docItem.storageName) {
+      try {
+        const storageRef = ref(storage, `documents/${docItem.storageName}`);
+        await deleteObject(storageRef).catch((e) => console.warn('[deleteDocument] Storage 파일 삭제 실패(이미 없을 수 있음):', e.message));
+      } catch(e) { console.error('[deleteDocument] Storage ref 생성 실패:', e); }
+    }
     setDocuments(prev => prev.filter(d => d.id !== docItem.id));
   };
 
@@ -1448,7 +1483,10 @@ export default function App({ user }) {
       const label = labels.find(l => l.id === item.labelId);
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
-      const isSizeSpecific = !isDaebong && label.size && label.size !== 'OS' && label.size !== 'FR' && label.size !== '소' && label.size !== '대';
+      // [M1 수정] 'one size', 'ONE SIZE', 'os' 등 케이스 변형도 OS로 취급
+      const _size = String(label.size || '').trim().toLowerCase();
+      const OS_VALUES = ['os', 'fr', 'one size', 'onesize', '소', '대', '아우터', ''];
+      const isSizeSpecific = !isDaebong && _size && !OS_VALUES.includes(_size);
       // 사이즈 전용 라벨인데 해당 사이즈 수량이 없으면 제외
       if (isSizeSpecific && sizeQtyMap[label.size] === undefined) return null;
       // 사이즈 전용 라벨은 해당 사이즈 합계만 사용, 그 외는 총합
@@ -3066,9 +3104,13 @@ export default function App({ user }) {
                           {order.applied
                             ? <div className="flex flex-col items-center gap-1">
                                 <span className="text-xs text-green-600 font-medium bg-green-100 px-2 py-1 rounded-full">✓ 완료</span>
-                                <button onClick={() => cancelOrderFromStock(order)} className="text-xs text-red-400 hover:text-red-600 hover:underline transition-colors">↩ 취소</button>
+                                <button onClick={() => cancelOrderFromStock(order)} disabled={isProcessingOrder(order.id)} className="text-xs text-red-400 hover:text-red-600 hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                  {isProcessingOrder(order.id) ? '처리 중...' : '↩ 취소'}
+                                </button>
                               </div>
-                            : <button onClick={() => applyOrderToStock(order)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium px-3 py-1 rounded-lg transition-colors">발주 확정</button>
+                            : <button onClick={() => applyOrderToStock(order)} disabled={isProcessingOrder(order.id)} className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium px-3 py-1 rounded-lg transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed">
+                                {isProcessingOrder(order.id) ? '처리 중...' : '발주 확정'}
+                              </button>
                           }
                         </td>
                         <td className="p-3 text-center">
@@ -3258,12 +3300,12 @@ export default function App({ user }) {
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                         발주 확정 완료 ({viewOrder.appliedAt})
                       </div>
-                      <button onClick={() => cancelOrderFromStock(viewOrder)} className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 px-4 py-2.5 rounded-lg font-medium text-sm border border-red-200 transition-colors">
-                        ↩ 확정 취소
+                      <button onClick={() => cancelOrderFromStock(viewOrder)} disabled={isProcessingOrder(viewOrder.id)} className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-700 px-4 py-2.5 rounded-lg font-medium text-sm border border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        {isProcessingOrder(viewOrder.id) ? '처리 중...' : '↩ 확정 취소'}
                       </button>
                     </div>
-                  : <button onClick={() => applyOrderToStock(viewOrder)} className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-lg font-bold shadow transition-colors">
-                      📦 발주 확정 (재고 차감)
+                  : <button onClick={() => applyOrderToStock(viewOrder)} disabled={isProcessingOrder(viewOrder.id)} className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-6 py-2.5 rounded-lg font-bold shadow transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed">
+                      {isProcessingOrder(viewOrder.id) ? '처리 중...' : '📦 발주 확정 (재고 차감)'}
                     </button>
                 }
               </div>

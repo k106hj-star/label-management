@@ -24,8 +24,9 @@ service cloud.firestore {
 
     // users: 관리자는 모두 읽기/쓰기, 일반 사용자는 본인 문서만 읽기 가능
     //        isAdmin/active 필드는 관리자만 변경 가능
+    // [M3-new 수정] 일반 사용자가 다른 사용자 목록을 읽지 못하도록 제한
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow create: if isAdmin();
       allow delete: if isAdmin();
       allow update: if isAdmin() ||

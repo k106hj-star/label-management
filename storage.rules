@@ -1,13 +1,28 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // 인증된 사용자만 접근 가능
+    function isSignedIn() { return request.auth != null; }
+    function isImage() { return request.resource.contentType.matches('image/.*'); }
+    function isUnder10MB() { return request.resource.size < 10 * 1024 * 1024; }
+    function isUnder20MB() { return request.resource.size < 20 * 1024 * 1024; }
+
+    // 라벨 이미지: 로그인 사용자 업로드 (이미지 + 10MB 제한)
     match /label-images/{allPaths=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isImage() && isUnder10MB();
     }
+
+    // 자료실 문서: 로그인 사용자 업로드 (20MB 제한)
     match /documents/{allPaths=**} {
-      allow read: if true;
-      allow write: if true;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isUnder20MB();
+    }
+
+    // products 백업 JSON: 로그인 사용자 읽기/쓰기
+    match /backups/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isUnder20MB();
     }
   }
 }

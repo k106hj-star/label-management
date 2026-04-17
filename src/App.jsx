@@ -89,6 +89,18 @@ function parseCSVLine(line) {
   return fields.map(f => f.trim());
 }
 
+// [C3-new] 고유 ID 생성 - 로그/문서 등 동시 생성 시 충돌 방지
+// crypto.randomUUID() 지원 브라우저: 완벽한 UUID 사용
+// 미지원 환경 fallback: Date.now() + 강화된 랜덤
+function uniqueId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `${Date.now()}-${crypto.randomUUID()}`;
+    }
+  } catch(e) {}
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 function parseCSV(csvText) {
   // [L3 수정] BOM/CRLF 정규화
   const cleanText = csvText.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
@@ -441,10 +453,13 @@ export default function App({ user }) {
       }
     }).catch((e) => console.error('[labels] 초기 로드 실패:', e)).finally(() => { labelsCanSave.current = true; });
     // 실시간 리스너: 다른 사용자의 변경만 반영 (내 쓰기는 hasPendingWrites로 스킵)
+    // [H3-new 수정] 실시간 리스너에서는 length===0 가드 제거
+    // (누군가 전체 삭제/CSV 재작성을 했을 때 다른 세션에 반영되어야 함.
+    //  초기 로드는 이미 상단에서 fsHasData 체크로 안전)
     const unsub = onSnapshot(doc(db, 'settings', 'labels'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
       const fsData = snap.data().list;
-      if (!Array.isArray(fsData) || fsData.length === 0) return;
+      if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === labelsLastWriteJson.current) return; // 내 쓰기 확정 스킵
       setLabels(fsData);
@@ -469,31 +484,29 @@ export default function App({ user }) {
     try { localStorage.setItem('label_products', JSON.stringify(data)); } catch(e) { console.error('[products] localStorage 저장 실패:', e); }
     try {
       const clean = JSON.parse(JSON.stringify(data));
-      // Firestore 저장
+      if (productsLastWriteJson.current !== undefined) productsLastWriteJson.current = JSON.stringify(clean);
       setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch((e) => console.error('[products] Firestore 저장 실패:', e));
-      // Firebase Storage 백업 (products-backup.json)
       const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
       const backupRef = ref(storage, 'backups/products-backup.json');
       uploadBytes(backupRef, jsonBlob).catch((e) => console.error('[products] Storage 백업 실패:', e));
     } catch(e) { console.error('[products] 저장 직렬화 실패:', e); }
   };
 
-  // Products Firestore 동기화 — [H3 수정] Firestore를 진실공급원으로
+  // Products Firestore 동기화 — [H3 수정] Firestore를 진실공급원으로 + [H4-new] onSnapshot 추가
   const firestoreLoaded = useRef(false);
   const productsCanSave = useRef(false);
+  const productsLastWriteJson = useRef('');
   useEffect(() => {
     if (firestoreLoaded.current) return;
     firestoreLoaded.current = true;
     getDoc(doc(db, 'settings', 'products')).then(snap => {
       const fsHasData = snap.exists() && Array.isArray(snap.data()?.list) && snap.data().list.length > 0;
       if (fsHasData) {
-        // Firestore에 데이터가 있으면 Firestore를 그대로 사용
-        // 이전에는 로컬 BOM과 합집합 병합했으나, 이로 인해 삭제된 BOM 항목이 부활하는 문제가 있음
         const fsData = snap.data().list;
         setProducts(fsData);
         localStorage.setItem('label_products', JSON.stringify(fsData));
+        productsLastWriteJson.current = JSON.stringify(fsData);
       } else {
-        // Firestore가 비어있을 때만 로컬을 업로드 (최초 복구용)
         const localRaw = localStorage.getItem('label_products');
         if (localRaw) {
           try {
@@ -507,6 +520,18 @@ export default function App({ user }) {
         }
       }
     }).catch((e) => console.error('[products] 초기 로드 실패:', e)).finally(() => { productsCanSave.current = true; });
+
+    // [H4-new] 실시간 리스너: 다른 사용자의 BOM 변경 실시간 반영 (stale BOM 기반 재고 차감 방지)
+    const unsub = onSnapshot(doc(db, 'settings', 'products'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData)) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === productsLastWriteJson.current) return;
+      setProducts(fsData);
+      localStorage.setItem('label_products', JSON.stringify(fsData));
+    });
+    return () => unsub();
   }, []);
 
   // products 변경 시 localStorage + Firestore + Storage에 즉시 저장
@@ -550,7 +575,7 @@ export default function App({ user }) {
     const ext = (file?.name || 'jpg').split('.').pop();
     const baseName = labelCode ? `${labelName} ${labelCode}` : (labelName || '라벨이미지');
     const docEntry = {
-      id: Date.now() + Math.random(),
+      id: uniqueId(),
       name: `${baseName}.${ext}`,
       storageName: '',
       url,
@@ -780,7 +805,7 @@ export default function App({ user }) {
       })),
     });
     const csvDoc = {
-      id: Date.now() + Math.random(),
+      id: uniqueId(),
       name: file.name, storageName: '', url: '', size: file.size,
       ext: 'csv', category: '재고리스트', uploadedAt: new Date().toISOString(), memo: '',
     };
@@ -886,14 +911,20 @@ export default function App({ user }) {
 
   const addLabelToBom = () => {
     if (!selectedProduct || bomSelection.labelIds.length === 0) return;
+    // [M4-new 수정] qty 검증: 1 이상의 정수로 클램프 (음수/0/NaN/문자 방어)
+    const qtyParsed = parseInt(bomSelection.qty);
+    const safeQty = (Number.isFinite(qtyParsed) && qtyParsed >= 1) ? qtyParsed : 1;
+    if (qtyParsed !== safeQty) {
+      alert(`수량이 올바르지 않아 ${safeQty}개로 보정되었습니다. (입력값: ${bomSelection.qty})`);
+    }
     const addedLabelIds = bomSelection.labelIds.map(lid => parseInt(lid)).filter(id => !selectedProduct.bom.find(b => b.labelId === id));
     const updatedProducts = products.map(p => {
       if (p.id === selectedProduct.id) {
-        let newBom = [...p.bom];
+        let newBom = [...(p.bom || [])];
         bomSelection.labelIds.forEach(lid => {
           const id = parseInt(lid);
           if (!newBom.find(b => b.labelId === id)) {
-            newBom.push({ labelId: id, qtyPerUnit: parseInt(bomSelection.qty) });
+            newBom.push({ labelId: id, qtyPerUnit: safeQty });
           }
         });
         return { ...p, bom: newBom };
@@ -902,11 +933,10 @@ export default function App({ user }) {
     });
     setProducts(updatedProducts);
     setSelectedProduct(updatedProducts.find(p => p.id === selectedProduct.id));
-    // 즉시 저장 (타이밍 문제 방지)
     saveProductsEverywhere(updatedProducts);
     if (addedLabelIds.length > 0) {
       const addedLabelNames = addedLabelIds.map(id => { const l = labels.find(lb => lb.id === id); return l ? `${l.name} (${l.size || '-'})` : String(id); });
-      addLog({ type: 'bom_add', productName: selectedProduct.name, labelNames: addedLabelNames, qty: parseInt(bomSelection.qty), summary: `BOM 라벨 추가: ${selectedProduct.name} +${addedLabelIds.length}종` });
+      addLog({ type: 'bom_add', productName: selectedProduct.name, labelNames: addedLabelNames, qty: safeQty, summary: `BOM 라벨 추가: ${selectedProduct.name} +${addedLabelIds.length}종` });
     }
     setBomSelection({ ...bomSelection, labelIds: [] });
   };
@@ -1031,7 +1061,7 @@ export default function App({ user }) {
       setLabels(finalLabels);
       setSavedOrders(finalOrders);
       if (viewOrder?.id === order.id) setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
-      setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _uid, userName: _name }, ...prev]);
+      setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _uid, userName: _name }, ...prev]);
       alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
     } catch(e) {
       console.error('[applyOrderToStock] 실패:', e);
@@ -1089,7 +1119,7 @@ export default function App({ user }) {
       if (viewOrder?.id === order.id) {
         setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
       }
-      setStockLogs(prev => [{ id: Date.now(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
+      setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
       alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
     } catch(e) {
       console.error('[cancelOrderFromStock] 실패:', e);
@@ -1106,54 +1136,44 @@ export default function App({ user }) {
   const ordersCanSave = useRef(false);
   const ordersLastWriteJson = useRef('');
   useEffect(() => {
-    const localRaw = localStorage.getItem('label_saved_orders');
-    const localData = localRaw ? JSON.parse(localRaw) : [];
-
-    // 초기 병합 (로컬 + Firestore)
+    // [L1-new 수정] 초기 로드는 Firestore를 진실공급원으로 사용
+    // 이전에는 로컬과 Firestore를 합집합으로 병합 후 Firestore에 다시 썼는데,
+    // 다른 사용자가 방금 삭제한 발주가 내 로컬에 남아있으면 삭제가 되돌아가는 문제 있음
     getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-      const fsData = (snap.exists() && Array.isArray(snap.data()?.list)) ? snap.data().list : [];
-      const merged = [...localData];
-      fsData.forEach(fo => {
-        const idx = merged.findIndex(m => m.id === fo.id);
-        if (idx === -1) { merged.push(fo); }
-        else {
-          merged[idx] = { ...fo, ...merged[idx],
-            applied: merged[idx].applied || fo.applied,
-            appliedAt: merged[idx].appliedAt || fo.appliedAt };
+      const fsHasData = snap.exists() && Array.isArray(snap.data()?.list) && snap.data().list.length > 0;
+      if (fsHasData) {
+        // Firestore에 데이터가 있으면 그대로 사용
+        const fsData = snap.data().list;
+        setSavedOrders(fsData);
+        localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
+        ordersLastWriteJson.current = JSON.stringify(fsData);
+      } else {
+        // Firestore가 비어있을 때만 localStorage를 업로드 (최초 복구용)
+        const localRaw = localStorage.getItem('label_saved_orders');
+        if (localRaw) {
+          try {
+            const localData = JSON.parse(localRaw);
+            if (Array.isArray(localData) && localData.length > 0) {
+              setSavedOrders(localData);
+              const clean = JSON.parse(JSON.stringify(localData));
+              ordersLastWriteJson.current = JSON.stringify(clean);
+              setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch((e) => console.error('[savedOrders] 초기 복구 저장 실패:', e));
+            }
+          } catch(e) { console.error('[savedOrders] 초기 복구 실패:', e); }
         }
-      });
-      setSavedOrders(merged);
-      localStorage.setItem('label_saved_orders', JSON.stringify(merged));
-      const clean = JSON.parse(JSON.stringify(merged));
-      ordersLastWriteJson.current = JSON.stringify(clean);
-      setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch((e) => console.error('[savedOrders] 초기 저장 실패:', e));
+      }
     }).catch((e) => console.error('[savedOrders] 초기 로드 실패:', e)).finally(() => { ordersCanSave.current = true; });
 
-    // 실시간 리스너: 다른 사용자의 발주 확정/취소를 즉시 반영
+    // [H2-new 수정] 실시간 리스너: Firestore 스냅샷을 그대로 신뢰
+    // 이전에는 prev.map(로컬 기준 병합) + 빠진 것만 push → 다른 사용자가 삭제한 발주가 되살아나는 문제
     const unsub = onSnapshot(doc(db, 'settings', 'savedOrders'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
       const fsData = snap.data().list;
       if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === ordersLastWriteJson.current) return; // 내 쓰기 확정 스킵
-      // 외부 변경 병합: applied:true 는 절대 false로 되돌리지 않음
-      setSavedOrders(prev => {
-        let changed = false;
-        const merged = prev.map(lo => {
-          const fo = fsData.find(f => f.id === lo.id);
-          if (!fo) return lo;
-          const newApplied = lo.applied || fo.applied;
-          const newAppliedAt = lo.appliedAt || fo.appliedAt;
-          if (JSON.stringify({ ...fo, applied: newApplied, appliedAt: newAppliedAt }) !== JSON.stringify(lo)) {
-            changed = true;
-            return { ...fo, applied: newApplied, appliedAt: newAppliedAt };
-          }
-          return lo;
-        });
-        fsData.forEach(fo => { if (!merged.find(m => m.id === fo.id)) { merged.push(fo); changed = true; } });
-        if (changed) localStorage.setItem('label_saved_orders', JSON.stringify(merged));
-        return changed ? merged : prev;
-      });
+      setSavedOrders(fsData);
+      localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
     });
     return () => unsub();
   }, []);
@@ -1234,7 +1254,7 @@ export default function App({ user }) {
   const addLog = (entry) => {
     const uid = user?.email ? user.email.split('@')[0] : '';
     const userName = currentUserName || user?.displayName || '';
-    setStockLogs(prev => [{ id: Date.now() + Math.random(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName, ...entry }, ...prev]);
+    setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName, ...entry }, ...prev]);
   };
   const safetyStockPrev = useRef({});
 
@@ -1342,7 +1362,7 @@ export default function App({ user }) {
         await uploadBytes(storageRef, file);
         const url = await getDownloadURL(storageRef);
         const newDoc = {
-          id: Date.now() + Math.random(),
+          id: uniqueId(),
           name: file.name,
           storageName: fileName,
           url,
@@ -1492,7 +1512,7 @@ export default function App({ user }) {
       // 사이즈 전용 라벨은 해당 사이즈 합계만 사용, 그 외는 총합
       const effectiveQty = isSizeSpecific ? sizeQtyMap[label.size] : totalQty;
       const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * effectiveQty;
-      const availableStock = Math.max(0, label.stock - (label.reserveStock ?? 0));
+      const availableStock = Math.max(0, Number(label.stock ?? 0) - Number(label.reserveStock ?? 0));
       const shortage = Math.max(0, totalNeed - availableStock);
       const cost = shortage * label.price;
       totalCost += cost;
@@ -2031,7 +2051,7 @@ export default function App({ user }) {
         {activeTab === 'inventory' && (
           <>
           {(() => {
-            const lowStockLabels = labels.filter(l => Number(l.safetyStock) > 0 && l.stock < Number(l.safetyStock));
+            const lowStockLabels = labels.filter(l => Number(l.safetyStock) > 0 && Number(l.stock ?? 0) < Number(l.safetyStock));
             if (lowStockLabels.length === 0) return null;
             return (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4">
@@ -3173,7 +3193,8 @@ export default function App({ user }) {
                       const newDetailsCmp = newDetails;
                       newDetailsCmp.forEach((d, i) => { if (oldDetails[i] && oldDetails[i].shortage !== d.shortage) orderChanges.push({ field: `${d.name}(${d.size}) 발주수량`, before: oldDetails[i].shortage, after: d.shortage }); });
                       if (orderChanges.length > 0) addLog({ type: 'order_edit', productName: viewOrder.productName || '(미선택)', changes: orderChanges, summary: `발주 수정: ${viewOrder.productName || '(미선택)'}` });
-                      setSavedOrders(prev => prev.map((o, i) => i === viewOrderEdits._idx ? updated : o));
+                      // [M1-new 수정] 배열 인덱스 대신 id 기반 매칭 (동시성 안전)
+                      setSavedOrders(prev => prev.map(o => o.id === viewOrder.id ? updated : o));
                       setViewOrder(updated);
                       setViewOrderEditMode(false);
                     }} className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold px-3 py-1 rounded">저장</button>

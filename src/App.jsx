@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown, Users, Tag, ShoppingBag, FileEdit } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -356,7 +356,7 @@ const initialProducts = [
 const DATA_VERSION = 2;
 
 export default function App({ user }) {
-  const [activeTab, setActiveTab] = useState('inventory');
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [lowStockExpanded, setLowStockExpanded] = useState(false);
   const [navExpanded, setNavExpanded] = useState(true);
   const [labelPage, setLabelPage] = useState(1);
@@ -2045,6 +2045,7 @@ export default function App({ user }) {
         </div>
         <nav className="flex-1 py-2 px-2 space-y-0.5">
           {[
+            { id:'dashboard', label:'현황', icon:<LayoutDashboard size={17}/>, color:'text-slate-900', bg:'bg-slate-100' },
             { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
             { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
@@ -2087,6 +2088,284 @@ export default function App({ user }) {
       {/* 메인 컨텐츠 */}
       <div className="flex-1 min-w-0 p-6">
       <div className="w-full max-w-[1600px] mx-auto space-y-6">
+
+        {/* [0] 현황 대시보드 탭 */}
+        {activeTab === 'dashboard' && (() => {
+          // ─── 통계 계산 ───
+          const totalLabels = labels.length;
+          const totalStock = labels.reduce((sum, l) => sum + Number(l.stock ?? 0), 0);
+          const totalValue = labels.reduce((sum, l) => sum + (Number(l.stock ?? 0) * Number(l.price ?? 0)), 0);
+          const lowStockLabels = labels.filter(l => Number(l.safetyStock) > 0 && Number(l.stock ?? 0) < Number(l.safetyStock));
+          const zeroStockLabels = labels.filter(l => Number(l.stock ?? 0) === 0);
+
+          // 브랜드별 분포
+          const brandStats = {};
+          labels.forEach(l => {
+            const b = l.brand || '공용';
+            if (!brandStats[b]) brandStats[b] = { count: 0, stock: 0, value: 0 };
+            brandStats[b].count++;
+            brandStats[b].stock += Number(l.stock ?? 0);
+            brandStats[b].value += Number(l.stock ?? 0) * Number(l.price ?? 0);
+          });
+          const brandList = Object.entries(brandStats).sort((a,b) => b[1].count - a[1].count);
+          const maxBrandCount = Math.max(...brandList.map(([,v]) => v.count), 1);
+
+          // 상품 현황
+          const totalProducts = products.length;
+          const productsWithBom = products.filter(p => (p.bom || []).length > 0).length;
+          const productsWithoutBom = totalProducts - productsWithBom;
+
+          // 발주 현황
+          const totalOrders = savedOrders.length;
+          const appliedOrders = savedOrders.filter(o => o.applied).length;
+          const pendingOrders = totalOrders - appliedOrders;
+          const recentApplied = savedOrders.filter(o => o.applied).sort((a,b) => (b.id || 0) - (a.id || 0)).slice(0, 5);
+
+          // 최근 활동 (오늘/7일)
+          const now = Date.now();
+          const ONE_DAY = 86400000;
+          const todayLogs = stockLogs.filter(log => {
+            const id = typeof log.id === 'number' ? log.id : 0;
+            return now - id < ONE_DAY;
+          }).length;
+          const week7Logs = stockLogs.filter(log => {
+            const id = typeof log.id === 'number' ? log.id : 0;
+            return now - id < ONE_DAY * 7;
+          }).length;
+          const recentLogs = stockLogs.slice(0, 8);
+
+          // 안전재고 미달 Top (심각도 순)
+          const lowStockTop = [...lowStockLabels].sort((a,b) => {
+            const aGap = Number(a.safetyStock) - Number(a.stock ?? 0);
+            const bGap = Number(b.safetyStock) - Number(b.stock ?? 0);
+            return bGap - aGap;
+          }).slice(0, 6);
+
+          const formatCurrency = (n) => n >= 100000000 ? `${(n/100000000).toFixed(1)}억` : n >= 10000 ? `${(n/10000).toFixed(0)}만` : n.toLocaleString();
+
+          // 로그 타입 → 라벨 매핑
+          const logTypeLabels = {
+            deduct: '재고 차감', restore: '재고 원복', add: '라벨 등록', delete: '라벨 삭제',
+            edit: '라벨 수정', bulk_delete: '일괄 삭제', bulk_edit: '일괄 수정', csv_import: 'CSV 가져오기',
+            safety_stock: '안전재고 변경', image_update: '이미지 업데이트', image_sync: '이미지 매핑',
+            order_save: '발주 저장', order_delete: '발주 삭제', order_delete_all: '발주 전체삭제',
+            order_edit: '발주 수정', product_add: '상품 등록', product_delete: '상품 삭제',
+            product_edit: '상품 수정', bom_add: 'BOM 추가', bom_remove: 'BOM 제거'
+          };
+
+          return (
+            <>
+              {/* 헤더 */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <LayoutDashboard size={22} className="text-slate-600" /> 현황 대시보드
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">라벨 재고 및 발주 현황을 한눈에 확인하세요</p>
+              </div>
+
+              {/* [상단] 요약 카드 4개 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <button onClick={() => setActiveTab('inventory')}
+                  className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 text-left hover:shadow-md hover:border-slate-300 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-slate-500">전체 라벨</p>
+                    <Package size={16} className="text-slate-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-slate-900">{totalLabels.toLocaleString()}<span className="text-sm font-normal text-slate-400 ml-1">종</span></p>
+                  <p className="text-xs text-slate-400 mt-1">총 재고 {totalStock.toLocaleString()}개</p>
+                </button>
+
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-slate-500">재고 평가액</p>
+                    <Activity size={16} className="text-slate-400" />
+                  </div>
+                  <p className="text-3xl font-bold text-slate-900">{formatCurrency(totalValue)}<span className="text-sm font-normal text-slate-400 ml-1">원</span></p>
+                  <p className="text-xs text-slate-400 mt-1">{totalValue.toLocaleString()}원</p>
+                </div>
+
+                <button onClick={() => setActiveTab('orders')}
+                  className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 text-left hover:shadow-md hover:border-slate-300 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-slate-500">미확정 발주</p>
+                    <Clock size={16} className="text-slate-400" />
+                  </div>
+                  <p className={`text-3xl font-bold ${pendingOrders > 0 ? 'text-orange-600' : 'text-slate-900'}`}>{pendingOrders}<span className="text-sm font-normal text-slate-400 ml-1">건</span></p>
+                  <p className="text-xs text-slate-400 mt-1">전체 {totalOrders}건 · 확정 {appliedOrders}건</p>
+                </button>
+
+                <button onClick={() => setActiveTab('inventory')}
+                  className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 text-left hover:shadow-md hover:border-slate-300 transition-all">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-slate-500">안전재고 미달</p>
+                    <AlertCircle size={16} className={lowStockLabels.length > 0 ? 'text-red-500' : 'text-slate-400'} />
+                  </div>
+                  <p className={`text-3xl font-bold ${lowStockLabels.length > 0 ? 'text-red-600' : 'text-slate-900'}`}>{lowStockLabels.length}<span className="text-sm font-normal text-slate-400 ml-1">건</span></p>
+                  <p className="text-xs text-slate-400 mt-1">재고 0: {zeroStockLabels.length}건</p>
+                </button>
+              </div>
+
+              {/* [중단] 브랜드별 분포 + 상품/발주 현황 */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* 브랜드별 라벨 분포 */}
+                <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Tag size={15} className="text-slate-500" /> 브랜드별 라벨 분포
+                    </h3>
+                    <span className="text-xs text-slate-400">{brandList.length}개 브랜드</span>
+                  </div>
+                  <div className="space-y-2.5">
+                    {brandList.map(([brand, v]) => (
+                      <div key={brand} className="flex items-center gap-3">
+                        <span className="text-xs font-semibold text-slate-700 w-10 shrink-0">{brand}</span>
+                        <div className="flex-1 h-6 bg-slate-100 rounded overflow-hidden relative">
+                          <div className="h-full bg-slate-400 rounded transition-all" style={{ width: `${(v.count / maxBrandCount) * 100}%` }} />
+                          <span className="absolute inset-0 flex items-center px-2 text-xs font-medium text-slate-700">
+                            {v.count}종
+                          </span>
+                        </div>
+                        <span className="text-xs text-slate-500 w-20 text-right shrink-0">재고 {v.stock.toLocaleString()}</span>
+                        <span className="text-xs text-slate-400 w-20 text-right shrink-0">{formatCurrency(v.value)}원</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 상품 & 발주 현황 */}
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                      <Layers size={15} className="text-slate-500" /> 생산 상품
+                    </h3>
+                    <div className="flex items-baseline gap-2 mb-2">
+                      <span className="text-2xl font-bold text-slate-900">{totalProducts}</span>
+                      <span className="text-xs text-slate-400">개 등록</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <div className="flex-1 flex flex-col items-center bg-slate-50 border border-slate-200 rounded p-2">
+                        <span className="text-xs text-slate-500">BOM 설정</span>
+                        <span className="text-lg font-bold text-slate-800">{productsWithBom}</span>
+                      </div>
+                      <div className="flex-1 flex flex-col items-center bg-slate-50 border border-slate-200 rounded p-2">
+                        <span className="text-xs text-slate-500">미설정</span>
+                        <span className={`text-lg font-bold ${productsWithoutBom > 0 ? 'text-orange-600' : 'text-slate-800'}`}>{productsWithoutBom}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                      <FileEdit size={15} className="text-slate-500" /> 발주 처리
+                    </h3>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-500 flex items-center gap-1.5"><CheckCircle2 size={13} className="text-slate-500" /> 확정 완료</span>
+                        <span className="font-semibold text-slate-800">{appliedOrders}건</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-500 flex items-center gap-1.5"><Clock size={13} className="text-slate-500" /> 미확정</span>
+                        <span className={`font-semibold ${pendingOrders > 0 ? 'text-orange-600' : 'text-slate-800'}`}>{pendingOrders}건</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-100">
+                        <span className="text-slate-500">전체 저장</span>
+                        <span className="font-semibold text-slate-800">{totalOrders}건</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* [하단] 안전재고 미달 + 최근 활동 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 안전재고 미달 Top 6 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <AlertCircle size={15} className="text-red-500" /> 안전재고 미달 Top
+                    </h3>
+                    {lowStockLabels.length > 6 && (
+                      <button onClick={() => setActiveTab('inventory')} className="text-xs text-slate-500 hover:text-slate-700">
+                        전체 {lowStockLabels.length}건 →
+                      </button>
+                    )}
+                  </div>
+                  {lowStockTop.length === 0 ? (
+                    <div className="text-center py-8">
+                      <CheckCircle2 size={28} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs text-slate-400">안전재고 미달 라벨이 없습니다</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {lowStockTop.map(l => {
+                        const gap = Number(l.safetyStock) - Number(l.stock ?? 0);
+                        return (
+                          <div key={l.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 transition-colors">
+                            <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 shrink-0">{l.brand}</span>
+                            <span className="flex-1 text-sm text-slate-700 truncate">{l.name} <span className="text-xs text-slate-400">({l.size})</span></span>
+                            <span className="text-xs text-slate-500 shrink-0">재고 {Number(l.stock ?? 0).toLocaleString()} / 안전 {Number(l.safetyStock).toLocaleString()}</span>
+                            <span className="text-xs font-semibold text-red-600 shrink-0 w-16 text-right">-{gap.toLocaleString()}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 최근 활동 */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <Activity size={15} className="text-slate-500" /> 최근 활동
+                    </h3>
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-slate-500">오늘 <span className="font-semibold text-slate-800">{todayLogs}</span></span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-slate-500">7일 <span className="font-semibold text-slate-800">{week7Logs}</span></span>
+                    </div>
+                  </div>
+                  {recentLogs.length === 0 ? (
+                    <div className="text-center py-8">
+                      <History size={28} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-xs text-slate-400">활동 내역이 없습니다</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {recentLogs.map(log => (
+                        <div key={log.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 transition-colors">
+                          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 w-20 text-center">{logTypeLabels[log.type] || log.type}</span>
+                          <span className="flex-1 text-xs text-slate-700 truncate">{log.summary || log.labelName || log.productName || '-'}</span>
+                          <span className="text-xs text-slate-400 shrink-0 whitespace-nowrap">{log.date?.split(' ').slice(-2).join(' ') || ''}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* [추가] 최근 확정 발주 */}
+              {recentApplied.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                      <CheckCircle2 size={15} className="text-slate-500" /> 최근 확정 발주
+                    </h3>
+                    <button onClick={() => setActiveTab('orders')} className="text-xs text-slate-500 hover:text-slate-700">전체 보기 →</button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {recentApplied.map(o => (
+                      <div key={o.id} className="border border-slate-200 rounded p-3 hover:border-slate-300 transition-colors">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{o.productName || '(미선택)'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">공장: {o.factory || '-'} · 발주자: {o.orderer || '-'}</p>
+                        <p className="text-xs text-slate-400 mt-1">{o.appliedAt || o.date || ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {/* [1] 라벨 마스터 탭 */}
         {activeTab === 'inventory' && (

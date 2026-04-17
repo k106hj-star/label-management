@@ -1349,6 +1349,9 @@ export default function App({ user }) {
   const [docActiveFolder, setDocActiveFolder] = useState(null); // null = 폴더 목록, '라벨이미지'|'재고리스트'|'재고로그'
   const [docSearch, setDocSearch] = useState('');
   const [docImageBrandFilter, setDocImageBrandFilter] = useState('전체');
+  // 자료실 파일 목록 페이지네이션
+  const [docPage, setDocPage] = useState(1);
+  const [docPageSize, setDocPageSize] = useState(30);
   const [docUploading, setDocUploading] = useState(false);
   // 재고로그 카테고리 폴더 필터 (null = 카테고리 폴더 그리드 표시, 아닌 경우 해당 카테고리 로그만 표시)
   const [logCategoryFilter, setLogCategoryFilter] = useState(null);
@@ -1446,6 +1449,8 @@ export default function App({ user }) {
     const brandMatch = docActiveFolder !== '라벨이미지' || docImageBrandFilter === '전체' || getDocLabelBrand(d) === docImageBrandFilter;
     return catMatch && searchMatch && brandMatch;
   });
+  const docTotalPages = Math.max(1, Math.ceil(filteredDocs.length / docPageSize));
+  const pagedDocs = filteredDocs.slice((docPage - 1) * docPageSize, docPage * docPageSize);
 
   const filteredStockLogs = (() => {
     const q = logSearch.trim().toLowerCase();
@@ -3716,7 +3721,7 @@ export default function App({ user }) {
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
               {docActiveFolder ? (
-                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); setLogCategoryFilter(null); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
+                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); setLogCategoryFilter(null); setDocPage(1); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
                   <ChevronLeft size={18} />
                 </button>
               ) : null}
@@ -3749,7 +3754,7 @@ export default function App({ user }) {
                 const count = documents.filter(d => d.category === folder.id).length;
                 const FolderIcon = folder.icon;
                 return (
-                  <button key={folder.id} onClick={() => { setDocActiveFolder(folder.id); setDocSearch(''); setLogCategoryFilter(null); }}
+                  <button key={folder.id} onClick={() => { setDocActiveFolder(folder.id); setDocSearch(''); setLogCategoryFilter(null); setDocPage(1); }}
                     className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 ${folder.border} ${folder.bg} hover:shadow-md transition-all group`}>
                     <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform`}>
                       <FolderIcon size={28} className={folder.color} />
@@ -3865,7 +3870,7 @@ export default function App({ user }) {
               {docActiveFolder === '라벨이미지' && (
                 <div className="flex flex-wrap gap-1.5">
                   {labelImgBrands.map(brand => (
-                    <button key={brand} onClick={() => setDocImageBrandFilter(brand)}
+                    <button key={brand} onClick={() => { setDocImageBrandFilter(brand); setDocPage(1); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border ${docImageBrandFilter === brand ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-400 hover:text-slate-700'}`}>
                       {brand}
                     </button>
@@ -3876,7 +3881,7 @@ export default function App({ user }) {
               <div className="flex items-center gap-2">
                 <Search size={15} className="text-slate-400" />
                 <input
-                  type="text" placeholder="파일명 검색" value={docSearch} onChange={e => setDocSearch(e.target.value)}
+                  type="text" placeholder="파일명 검색" value={docSearch} onChange={e => { setDocSearch(e.target.value); setDocPage(1); }}
                   className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-teal-300"
                 />
               </div>
@@ -3888,31 +3893,64 @@ export default function App({ user }) {
                   <p className="text-sm">{docSearch ? '검색 결과가 없습니다.' : '파일을 추가해주세요.'}</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
-                  {filteredDocs.map(d => (
-                    <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
-                      <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                        {getFileIcon(d.ext)}
+                <>
+                  <div className="divide-y divide-slate-100">
+                    {pagedDocs.map(d => (
+                      <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                        <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                          {getFileIcon(d.ext)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
+                          </p>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <a href={d.url} target="_blank" rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors" title="다운로드">
+                            <Download size={15} />
+                          </a>
+                          <button onClick={() => deleteDocument(d)}
+                            className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="삭제">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
-                        </p>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <a href={d.url} target="_blank" rel="noopener noreferrer"
-                          className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors" title="다운로드">
-                          <Download size={15} />
-                        </a>
-                        <button onClick={() => deleteDocument(d)}
-                          className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="삭제">
-                          <Trash2 size={15} />
+                    ))}
+                  </div>
+
+                  {/* 페이지네이션 */}
+                  <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <span>페이지당</span>
+                      {[30, 50, 100].map(size => (
+                        <button key={size} onClick={() => { setDocPageSize(size); setDocPage(1); }}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${docPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                          {size}
                         </button>
-                      </div>
+                      ))}
+                      <span className="ml-2 text-slate-400">{filteredDocs.length}개 중 {(docPage-1)*docPageSize+1}–{Math.min(docPage*docPageSize, filteredDocs.length)}</span>
                     </div>
-                  ))}
-                </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setDocPage(1)} disabled={docPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                      <button onClick={() => setDocPage(p => Math.max(1, p-1))} disabled={docPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                      {Array.from({length: docTotalPages}, (_, i) => i+1)
+                        .filter(p => p === 1 || p === docTotalPages || Math.abs(p - docPage) <= 2)
+                        .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, [])
+                        .map((p, idx) => p === '...' ? (
+                          <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
+                        ) : (
+                          <button key={p} onClick={() => setDocPage(p)}
+                            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${docPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                            {p}
+                          </button>
+                        ))}
+                      <button onClick={() => setDocPage(p => Math.min(docTotalPages, p+1))} disabled={docPage === docTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                      <button onClick={() => setDocPage(docTotalPages)} disabled={docPage === docTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
+                    </div>
+                  </div>
+                </>
               )}
             </>
           )}

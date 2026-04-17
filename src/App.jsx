@@ -647,48 +647,84 @@ export default function App({ user }) {
   const syncLabelImages = () => {
     const imagesDocs = documents.filter(d => d.category === '라벨이미지' && d.url);
 
-    // 인덱스 미리 구성
-    const docByExact = {};
-    const docByCode = {};
-    const docByBaseCode = {};
+    // ─── 이미지 파일 인덱싱 (다층 정규화) ───
+    // 파일명 예: "EZ 회색 반접이 사이즈라벨 EZSL001-1.jpg"
+    //   → 토큰 "ezsl001-1"의 base code는 "ezsl001" (끝 "-1"만 제거)
+    const docByExact = {};        // "라벨명 품번" 정확 매칭
+    const docByCodeToken = {};    // 파일 토큰 그대로 (예: "ezsl001-1")
+    const docByBaseCode = {};     // 토큰에서 "-N" 제거한 것 (예: "ezsl001") — 순서 보존
 
     imagesDocs.forEach(d => {
       const noExt = d.name.replace(/\.[^.]+$/, '').trim().toLowerCase();
       docByExact[noExt] = d;
       const tokens = noExt.split(/[\s_]+/).filter(Boolean);
       tokens.forEach(token => {
-        if (!docByCode[token]) docByCode[token] = [];
-        docByCode[token].push(d);
-        const base = token.replace(/-?\d+$/, '');
-        if (base && base !== token) {
-          if (!docByBaseCode[base]) docByBaseCode[base] = [];
-          docByBaseCode[base].push(d);
+        if (!docByCodeToken[token]) docByCodeToken[token] = [];
+        docByCodeToken[token].push(d);
+        // "ezsl001-1" → "ezsl001" (접미사 -N 제거)
+        const baseCode = token.replace(/-\d+$/, '');
+        if (baseCode !== token && /^[a-z]+\d+$/i.test(baseCode)) {
+          if (!docByBaseCode[baseCode]) docByBaseCode[baseCode] = [];
+          docByBaseCode[baseCode].push(d);
         }
       });
     });
 
-    // labels 직접 map → setLabels에 결과 배열 전달 (카운터 정확히 집계)
-    const codeUsed = {};
+    // ─── 라벨별 매칭 ───
+    // 여러 사이즈가 같은 품번을 공유하는 경우(예: EZSL001 M/L/XL/2XL) 파일이 여러개라면
+    // 라벨 순서대로 파일을 1:1 배정, 파일이 부족하면 첫 번째 파일을 공유
+    const codeUsed = {};            // exact 매칭 시 한 파일을 한 라벨만 쓰도록
+    const baseCodeIdx = {};         // { baseCode: 다음으로 배정할 파일 인덱스 }
     let matched = 0;
+
     const updatedLabels = labels.map(label => {
       const key = `${label.name} ${label.code}`.toLowerCase();
-      const code = label.code.toLowerCase();
-      const baseCode = code.replace(/-?\d+$/, '');
+      const code = String(label.code || '').toLowerCase();
 
+      // 1. 정확 일치 (라벨명 + 품번)
       if (docByExact[key] && !codeUsed[docByExact[key].id]) {
         codeUsed[docByExact[key].id] = true; matched++;
         return { ...label, img: docByExact[key].url };
       }
-      const exactDocs = (docByCode[code] || []).filter(d => !codeUsed[d.id]);
+
+      // 2. 품번 토큰 완전 일치 (파일에 "ezsl001" 토큰이 있는 경우)
+      const exactDocs = (docByCodeToken[code] || []).filter(d => !codeUsed[d.id]);
       if (exactDocs.length > 0) {
         codeUsed[exactDocs[0].id] = true; matched++;
         return { ...label, img: exactDocs[0].url };
       }
-      const baseDocs = (docByBaseCode[baseCode] || []).filter(d => !codeUsed[d.id]);
-      if (baseDocs.length > 0) {
-        codeUsed[baseDocs[0].id] = true; matched++;
-        return { ...label, img: baseDocs[0].url };
+
+      // 3. [개선] 파일 접미사 -N 제거 후 품번 매칭
+      //    (예: 파일 "EZSL001-1", "EZSL001-2" → base "ezsl001" → 라벨 품번 "ezsl001"과 매칭)
+      //    같은 품번 여러 사이즈는 파일 순서대로 배정
+      const baseMatches = docByBaseCode[code] || [];
+      if (baseMatches.length > 0) {
+        const idx = baseCodeIdx[code] || 0;
+        const doc = baseMatches[Math.min(idx, baseMatches.length - 1)];
+        baseCodeIdx[code] = idx + 1;
+        matched++;
+        return { ...label, img: doc.url };
       }
+
+      // 4. 라벨 품번이 "-N" 접미사 있는 경우 → -N 제거 후 파일 토큰에서 찾기
+      const labelBaseCode = code.replace(/-\d+$/, '');
+      if (labelBaseCode !== code && labelBaseCode) {
+        const lbDocs = (docByCodeToken[labelBaseCode] || []).filter(d => !codeUsed[d.id]);
+        if (lbDocs.length > 0) {
+          codeUsed[lbDocs[0].id] = true; matched++;
+          return { ...label, img: lbDocs[0].url };
+        }
+        // 한번 더 시도: 라벨 base + base files
+        const lbBaseMatches = docByBaseCode[labelBaseCode] || [];
+        if (lbBaseMatches.length > 0) {
+          const idx = baseCodeIdx[labelBaseCode] || 0;
+          const doc = lbBaseMatches[Math.min(idx, lbBaseMatches.length - 1)];
+          baseCodeIdx[labelBaseCode] = idx + 1;
+          matched++;
+          return { ...label, img: doc.url };
+        }
+      }
+
       return label;
     });
 

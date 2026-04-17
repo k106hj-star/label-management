@@ -3744,11 +3744,6 @@ export default function App({ user }) {
           {/* 폴더 목록 화면 */}
           {!docActiveFolder ? (
             <>
-            <div className="flex justify-end">
-              <button onClick={syncLabelImages} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-colors" title="라벨이미지 폴더의 파일명(라벨명 품번)을 기준으로 재고리스트 이미지 자동 매핑">
-                <ImageIcon size={14} /> 재고리스트에 이미지 매핑
-              </button>
-            </div>
             <div className="grid grid-cols-3 gap-4">
               {DOC_FOLDERS.map(folder => {
                 const count = documents.filter(d => d.category === folder.id).length;
@@ -3858,6 +3853,14 @@ export default function App({ user }) {
             )
           ) : (
             <>
+              {/* 라벨이미지 폴더 전용: 재고리스트에 이미지 매핑 버튼 */}
+              {docActiveFolder === '라벨이미지' && (
+                <div className="flex justify-end">
+                  <button onClick={syncLabelImages} className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-medium transition-colors" title="라벨이미지 폴더의 파일명(라벨명 품번)을 기준으로 재고리스트 이미지 자동 매핑">
+                    <ImageIcon size={14} /> 재고리스트에 이미지 매핑
+                  </button>
+                </div>
+              )}
               {/* 라벨이미지 브랜드 필터 */}
               {docActiveFolder === '라벨이미지' && (
                 <div className="flex flex-wrap gap-1.5">

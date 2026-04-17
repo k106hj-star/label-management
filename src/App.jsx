@@ -2215,9 +2215,9 @@ export default function App({ user }) {
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">라벨명</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">품번</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">사이즈</th>
-                    <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">현재고</th>
+                    <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">현재고</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">안전재고</th>
-                    <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">최소보유</th>
+                    <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">최소보유</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">단가</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">공급처</th>
                     <th className="p-3 font-medium text-center sticky top-0 bg-slate-50 z-10">관리</th>
@@ -2265,7 +2265,7 @@ export default function App({ user }) {
                         }`}>{l.brand}</span>
                       </td>
                       <td className="p-3 text-sm">{l.type}</td>
-                      <td className="p-3 font-medium text-slate-800">{l.name}</td>
+                      <td className="p-3 font-semibold text-slate-800">{l.name}</td>
                       <td className="p-3 text-sm text-slate-500">{l.code}</td>
                       <td className="p-3 text-sm">{l.size}</td>
                       <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : l.stock.toLocaleString()}</td>
@@ -2273,7 +2273,7 @@ export default function App({ user }) {
                         <input type="number" min="0" value={l.safetyStock || 0} onFocus={e => { safetyStockPrev.current[l.id] = parseInt(e.target.value) || 0; }} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} onBlur={e => { const newVal = parseInt(e.target.value) || 0; const oldVal = safetyStockPrev.current[l.id]; if (oldVal !== undefined && oldVal !== newVal) addLog({ type: 'safety_stock', labelId: l.id, labelName: l.name, labelCode: l.code, before: oldVal, after: newVal, summary: `안전재고 변경: ${l.name} (${l.code}) ${oldVal}→${newVal}` }); delete safetyStockPrev.current[l.id]; }} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>
                       <td className="p-3 text-right text-sm">
-                        <input type="number" min="0" value={l.reserveStock ?? 0} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, reserveStock: parseInt(e.target.value) || 0 } : lb))} className="w-16 p-1 border border-amber-200 rounded text-right text-sm bg-amber-50 text-amber-700" />
+                        <input type="number" min="0" value={l.reserveStock ?? 0} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, reserveStock: parseInt(e.target.value) || 0 } : lb))} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>

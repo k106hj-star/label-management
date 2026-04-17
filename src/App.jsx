@@ -3895,29 +3895,57 @@ export default function App({ user }) {
               ) : (
                 <>
                   <div className="divide-y divide-slate-100">
-                    {pagedDocs.map(d => (
-                      <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
-                        <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                          {getFileIcon(d.ext)}
+                    {pagedDocs.map(d => {
+                      const isImage = ['jpg','jpeg','png','gif','webp','bmp','svg'].includes((d.ext || '').toLowerCase());
+                      return (
+                        <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                          {isImage && d.url ? (
+                            <button
+                              onClick={() => setPreviewImg(d.url)}
+                              className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center flex-shrink-0 transition-colors cursor-zoom-in"
+                              title="클릭하여 이미지 미리보기"
+                            >
+                              {getFileIcon(d.ext)}
+                            </button>
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                              {getFileIcon(d.ext)}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            {isImage && d.url ? (
+                              <button
+                                onClick={() => setPreviewImg(d.url)}
+                                className="text-left w-full"
+                                title="클릭하여 이미지 미리보기"
+                              >
+                                <p className="text-sm font-medium text-slate-800 truncate hover:text-slate-900 hover:underline">{d.name}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
+                                </p>
+                              </button>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <a href={d.url} target="_blank" rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors" title="다운로드">
+                              <Download size={15} />
+                            </a>
+                            <button onClick={() => deleteDocument(d)}
+                              className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="삭제">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}
-                          </p>
-                        </div>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <a href={d.url} target="_blank" rel="noopener noreferrer"
-                            className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors" title="다운로드">
-                            <Download size={15} />
-                          </a>
-                          <button onClick={() => deleteDocument(d)}
-                            className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors" title="삭제">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* 페이지네이션 */}

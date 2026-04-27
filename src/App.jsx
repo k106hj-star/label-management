@@ -125,6 +125,7 @@ function parseCSV(csvText) {
   const iReserve  = col(['최소보유수량']);
   const iPrice    = col(['단가']);
   const iVendor   = col(['공급처']);
+  const iDelivery = col(['납품유형', '납품 유형', '납품']);
 
   const results = [];
   for (let i = 1; i < lines.length; i++) {
@@ -137,8 +138,16 @@ function parseCSV(csvText) {
     const priceRaw   = get(iPrice).replace(/,/g, '');
     const safetyRaw  = get(iSafety).replace(/,/g, '');
     const reserveRaw = get(iReserve).replace(/,/g, '');
+    const deliveryRaw = get(iDelivery).trim();
     // [C2 수정] 빈 값은 undefined로 두어 CSV 재업로드 시 기존 재고/단가를 0으로 덮어쓰지 않도록 함
     const num = (raw) => (!raw || raw === '-') ? undefined : (parseInt(raw) || 0);
+    // 납품유형 정규화
+    const normalizeDelivery = (v) => {
+      const s = (v || '').trim();
+      if (s === '공장' || s === '공장납품' || s === 'factory') return '공장납품';
+      if (s === '본사' || s === '본사납품' || s === 'hq') return '본사납품';
+      return undefined; // 빈 값은 기본값(본사납품) 적용
+    };
     results.push({
       id: i,
       brand: get(iBrand),
@@ -151,6 +160,7 @@ function parseCSV(csvText) {
       reserveStock: num(reserveRaw),
       price: num(priceRaw),
       vendor: get(iVendor),
+      deliveryType: normalizeDelivery(deliveryRaw),
       img: ''
     });
   }
@@ -553,7 +563,7 @@ export default function App({ user }) {
   const [labelLogModal, setLabelLogModal] = useState(null); // 라벨 로그 모달 (label 객체)
   const [selectedLabelIds, setSelectedLabelIds] = useState(new Set());
   const [showBulkEditModal, setShowBulkEditModal] = useState(false);
-  const [bulkEditFields, setBulkEditFields] = useState({ vendor: '', type: '', brand: '' });
+  const [bulkEditFields, setBulkEditFields] = useState({ vendor: '', type: '', brand: '', deliveryType: '' });
   const [csvImportPending, setCsvImportPending] = useState(null);
 
   const startEdit = (label) => {
@@ -564,7 +574,7 @@ export default function App({ user }) {
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
     const original = labels.find(l => l.id === editLabel.id);
-    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '납품유형' };
     const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
     if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
@@ -632,7 +642,7 @@ export default function App({ user }) {
   const pagedLabels = filteredLabels.slice((labelPage - 1) * labelPageSize, labelPage * labelPageSize);
 
   // --- [1] 라벨 마스터 관련 함수 ---
-  const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', img: '' });
+  const [newLabel, setNewLabel] = useState({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', deliveryType: '본사납품', img: '' });
   const [showAddLabelModal, setShowAddLabelModal] = useState(false);
 
   const handleImageUpload = async (e) => {
@@ -738,10 +748,11 @@ export default function App({ user }) {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처';
+    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처,납품유형';
     const rows = labels.map(l => [
       l.brand, l.type, l.name, l.code, l.size,
-      l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? ''
+      l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? '',
+      l.deliveryType || '본사납품'
     ].map(escape).join(','));
     const bom = '\uFEFF';
     const blob = new Blob([bom + header + '\n' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -755,8 +766,8 @@ export default function App({ user }) {
 
   // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
   const CSV_ALWAYS_UPDATE = ['stock'];
-  const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor'];
-  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
+  const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor', 'deliveryType'];
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '납품유형' };
 
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
@@ -856,7 +867,7 @@ export default function App({ user }) {
     const { _imgFile, ...labelData } = newLabel;
     setLabels([{ ...labelData, id: Date.now() }, ...labels]);
     addLog({ type: 'add', labelName: newLabel.name, labelCode: newLabel.code, labelBrand: newLabel.brand, summary: `라벨 신규 등록: ${newLabel.name} (${newLabel.code})` });
-    setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', img: '' });
+    setNewLabel({ brand: 'WV', type: '행택', name: '', size: '', code: '', stock: 0, safetyStock: 0, reserveStock: 0, price: 0, vendor: '', deliveryType: '본사납품', img: '' });
     setShowAddLabelModal(false);
   };
 
@@ -1078,15 +1089,20 @@ export default function App({ user }) {
         if (!targetOrder) throw new Error('order_not_found');
         if (targetOrder.applied) throw new Error('already_applied');
 
-        // 재고 차감 (Firestore 기준)
+        // 재고 차감 (Firestore 기준) — 공장납품 라벨은 차감 제외
         logItems = orderItems.map(d => {
           const lbl = fsLabels.find(l => l.id === d.id);
           const before = lbl ? Number(lbl.stock || 0) : 0;
-          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: -d.shortage, after: before - d.shortage };
+          const isFactory = (lbl?.deliveryType || '본사납품') === '공장납품';
+          const change = isFactory ? 0 : -d.shortage;
+          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
         const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
-          return matched ? { ...lbl, stock: Number(lbl.stock || 0) - matched.shortage } : lbl;
+          if (!matched) return lbl;
+          const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
+          if (isFactory) return lbl; // 공장납품은 본사재고에서 차감 안 함
+          return { ...lbl, stock: Number(lbl.stock || 0) - matched.shortage };
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -1138,11 +1154,16 @@ export default function App({ user }) {
         logItems = orderItems.map(d => {
           const lbl = fsLabels.find(l => l.id === d.id);
           const before = lbl ? Number(lbl.stock || 0) : 0;
-          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change: +d.shortage, after: before + d.shortage };
+          const isFactory = (lbl?.deliveryType || '본사납품') === '공장납품';
+          const change = isFactory ? 0 : +d.shortage;
+          return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
         const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
-          return matched ? { ...lbl, stock: Number(lbl.stock || 0) + matched.shortage } : lbl;
+          if (!matched) return lbl;
+          const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
+          if (isFactory) return lbl; // 공장납품은 본사재고에 영향 없음
+          return { ...lbl, stock: Number(lbl.stock || 0) + matched.shortage };
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -2345,20 +2366,26 @@ export default function App({ user }) {
         {/* [0] 현황 대시보드 탭 */}
         {activeTab === 'dashboard' && (() => {
           // ─── 통계 계산 ───
+          const isHQ = (l) => (l.deliveryType || '본사납품') === '본사납품';
           const totalLabels = labels.length;
-          const totalStock = labels.reduce((sum, l) => sum + Number(l.stock ?? 0), 0);
-          const totalValue = labels.reduce((sum, l) => sum + (Number(l.stock ?? 0) * Number(l.price ?? 0)), 0);
+          const hqLabels = labels.filter(isHQ);
+          const factoryLabels = labels.filter(l => !isHQ(l));
+          // 본사재고/평가액은 본사납품 라벨만 합산
+          const totalStock = hqLabels.reduce((sum, l) => sum + Number(l.stock ?? 0), 0);
+          const totalValue = hqLabels.reduce((sum, l) => sum + (Number(l.stock ?? 0) * Number(l.price ?? 0)), 0);
           const lowStockLabels = labels.filter(l => Number(l.safetyStock) > 0 && Number(l.stock ?? 0) < Number(l.safetyStock));
           const zeroStockLabels = labels.filter(l => Number(l.stock ?? 0) === 0);
 
-          // 브랜드별 분포
+          // 브랜드별 분포 (본사납품만 재고/평가액에 합산)
           const brandStats = {};
           labels.forEach(l => {
             const b = l.brand || '공용';
             if (!brandStats[b]) brandStats[b] = { count: 0, stock: 0, value: 0 };
             brandStats[b].count++;
-            brandStats[b].stock += Number(l.stock ?? 0);
-            brandStats[b].value += Number(l.stock ?? 0) * Number(l.price ?? 0);
+            if (isHQ(l)) {
+              brandStats[b].stock += Number(l.stock ?? 0);
+              brandStats[b].value += Number(l.stock ?? 0) * Number(l.price ?? 0);
+            }
           });
           const brandList = Object.entries(brandStats).sort((a,b) => b[1].count - a[1].count);
           const maxBrandCount = Math.max(...brandList.map(([,v]) => v.count), 1);
@@ -2425,16 +2452,16 @@ export default function App({ user }) {
                     <Package size={16} className="text-slate-400" />
                   </div>
                   <p className="text-3xl font-bold text-slate-900">{totalLabels.toLocaleString()}<span className="text-sm font-normal text-slate-400 ml-1">종</span></p>
-                  <p className="text-xs text-slate-400 mt-1">총 재고 {totalStock.toLocaleString()}개</p>
+                  <p className="text-xs text-slate-400 mt-1">🏢 본사 {hqLabels.length} · 🏭 공장 {factoryLabels.length}</p>
                 </button>
 
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-slate-500">재고 평가액</p>
+                    <p className="text-xs font-medium text-slate-500">본사재고 평가액</p>
                     <Activity size={16} className="text-slate-400" />
                   </div>
                   <p className="text-3xl font-bold text-slate-900">{formatCurrency(totalValue)}<span className="text-sm font-normal text-slate-400 ml-1">원</span></p>
-                  <p className="text-xs text-slate-400 mt-1">{totalValue.toLocaleString()}원</p>
+                  <p className="text-xs text-slate-400 mt-1">본사재고 {totalStock.toLocaleString()}개 · 공장납품 제외</p>
                 </div>
 
                 <button onClick={() => setActiveTab('orders')}
@@ -2802,7 +2829,32 @@ export default function App({ user }) {
                       <td className="p-3 font-semibold text-slate-800">{l.name}</td>
                       <td className="p-3 text-sm text-slate-500">{l.code}</td>
                       <td className="p-3 text-sm">{l.size}</td>
-                      <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : l.stock.toLocaleString()}</td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {(() => {
+                            const dt = l.deliveryType || '본사납품';
+                            const isFactory = dt === '공장납품';
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newDt = isFactory ? '본사납품' : '공장납품';
+                                  const before = dt;
+                                  setLabels(prev => prev.map(lb => lb.id === l.id ? { ...lb, deliveryType: newDt } : lb));
+                                  addLog({ type: 'edit', labelId: l.id, labelName: l.name, labelCode: l.code, changes: [{ field: '납품유형', before, after: newDt }], summary: `납품유형 변경: ${l.name} (${l.code}) ${before}→${newDt}` });
+                                }}
+                                title={isFactory ? '공장납품 (본사재고 차감 안 함) - 클릭하여 본사납품으로 변경' : '본사납품 (본사재고 차감) - 클릭하여 공장납품으로 변경'}
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${isFactory ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
+                              >
+                                {isFactory ? '🏭 공장' : '🏢 본사'}
+                              </button>
+                            );
+                          })()}
+                          <span className={`font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>
+                            {l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : Number(l.stock ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </td>
                       <td className="p-3 text-right text-sm">
                         <input type="number" min="0" value={l.safetyStock || 0} onFocus={e => { safetyStockPrev.current[l.id] = parseInt(e.target.value) || 0; }} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} onBlur={e => { const newVal = parseInt(e.target.value) || 0; const oldVal = safetyStockPrev.current[l.id]; if (oldVal !== undefined && oldVal !== newVal) addLog({ type: 'safety_stock', labelId: l.id, labelName: l.name, labelCode: l.code, before: oldVal, after: newVal, summary: `안전재고 변경: ${l.name} (${l.code}) ${oldVal}→${newVal}` }); delete safetyStockPrev.current[l.id]; }} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>
@@ -2897,6 +2949,18 @@ export default function App({ user }) {
                       <label className="block text-xs font-medium text-slate-600 mb-1">공급처</label>
                       <input type="text" placeholder="변경 안 함" value={bulkEditFields.vendor} onChange={e => setBulkEditFields(p => ({ ...p, vendor: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm" />
                     </div>
+                    <div className="col-span-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">납품유형</label>
+                      <div className="flex gap-2">
+                        {[{ v: '', label: '변경 안 함' }, { v: '본사납품', label: '🏢 본사납품' }, { v: '공장납품', label: '🏭 공장납품' }].map(opt => (
+                          <button key={opt.v} type="button"
+                            onClick={() => setBulkEditFields(p => ({ ...p, deliveryType: opt.v }))}
+                            className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${bulkEditFields.deliveryType === opt.v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-5 justify-end">
                     <button onClick={() => setShowBulkEditModal(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">취소</button>
@@ -2905,6 +2969,7 @@ export default function App({ user }) {
                       if (bulkEditFields.brand) changedFields.push(`브랜드→${bulkEditFields.brand}`);
                       if (bulkEditFields.type) changedFields.push(`종류→${bulkEditFields.type}`);
                       if (bulkEditFields.vendor) changedFields.push(`공급처→${bulkEditFields.vendor}`);
+                      if (bulkEditFields.deliveryType) changedFields.push(`납품유형→${bulkEditFields.deliveryType}`);
                       setLabels(prev => prev.map(l => {
                         if (!selectedLabelIds.has(l.id)) return l;
                         return {
@@ -2912,6 +2977,7 @@ export default function App({ user }) {
                           ...(bulkEditFields.brand ? { brand: bulkEditFields.brand } : {}),
                           ...(bulkEditFields.type ? { type: bulkEditFields.type } : {}),
                           ...(bulkEditFields.vendor ? { vendor: bulkEditFields.vendor } : {}),
+                          ...(bulkEditFields.deliveryType ? { deliveryType: bulkEditFields.deliveryType } : {}),
                         };
                       }));
                       addLog({ type: 'bulk_edit', count: selectedLabelIds.size, fields: { ...bulkEditFields }, summary: `일괄 수정: ${selectedLabelIds.size}개 라벨 (${changedFields.join(', ')})` });
@@ -2973,6 +3039,23 @@ export default function App({ user }) {
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">공급처</label>
                       <input type="text" value={newLabel.vendor} onChange={e => setNewLabel({ ...newLabel, vendor: e.target.value })} placeholder="예: 스마트, SB라벨" className="w-full p-2 border border-slate-300 rounded text-sm" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs text-slate-500 mb-1">납품유형 <span className="text-slate-400">(발주 시 본사재고 차감 여부)</span></label>
+                      <div className="flex gap-2">
+                        {['본사납품', '공장납품'].map(dt => (
+                          <button key={dt} type="button"
+                            onClick={() => setNewLabel({ ...newLabel, deliveryType: dt })}
+                            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${(newLabel.deliveryType || '본사납품') === dt ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                            {dt === '본사납품' ? '🏢 본사납품' : '🏭 공장납품'}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {(newLabel.deliveryType || '본사납품') === '본사납품'
+                          ? '발주 확정 시 본사재고에서 차감됩니다'
+                          : '발주 확정 시 본사재고에서 차감되지 않습니다 (공장 직납)'}
+                      </p>
                     </div>
                   </div>
                   <div className="flex justify-end gap-2 mt-5">
@@ -4155,6 +4238,23 @@ export default function App({ user }) {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">공급처</label>
                 <input type="text" value={editLabel.vendor} onChange={e => setEditLabel({ ...editLabel, vendor: e.target.value })} className="w-full p-2 border border-slate-300 rounded text-sm" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs text-slate-500 mb-1">납품유형 <span className="text-slate-400">(발주 시 본사재고 차감 여부)</span></label>
+                <div className="flex gap-2">
+                  {['본사납품', '공장납품'].map(dt => (
+                    <button key={dt} type="button"
+                      onClick={() => setEditLabel({ ...editLabel, deliveryType: dt })}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${(editLabel.deliveryType || '본사납품') === dt ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+                      {dt === '본사납품' ? '🏢 본사납품' : '🏭 공장납품'}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {(editLabel.deliveryType || '본사납품') === '본사납품'
+                    ? '발주 확정 시 본사재고에서 차감됩니다'
+                    : '발주 확정 시 본사재고에서 차감되지 않습니다 (공장 직납)'}
+                </p>
               </div>
               <div className="col-span-2">
                 <label className="block text-xs text-slate-500 mb-1">이미지</label>

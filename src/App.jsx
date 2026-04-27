@@ -2458,6 +2458,25 @@ export default function App({ user }) {
             return bGap - aGap;
           }).slice(0, 6);
 
+          // 입력 누락 라벨 점검
+          const isEmpty = (v) => v === undefined || v === null || v === '' || v === 0;
+          const missingPrice = labels.filter(l => isEmpty(l.price));
+          const missingVendor = labels.filter(l => !l.vendor || l.vendor === '-');
+          const missingType = labels.filter(l => !l.type);
+          const missingSize = labels.filter(l => !l.size);
+          const missingImage = labels.filter(l => !l.img);
+          const missingSafety = labels.filter(l => isEmpty(l.safetyStock));
+          // 입력 누락 (가격 또는 공급처가 비어있는 라벨)
+          const incompleteLabels = labels.filter(l => isEmpty(l.price) || !l.vendor || !l.type || !l.size);
+          const incompleteTop = incompleteLabels.slice(0, 6).map(l => {
+            const missing = [];
+            if (isEmpty(l.price)) missing.push('단가');
+            if (!l.vendor) missing.push('공급처');
+            if (!l.type) missing.push('종류');
+            if (!l.size) missing.push('사이즈');
+            return { ...l, missing };
+          });
+
           const formatCurrency = (n) => n >= 100000000 ? `${(n/100000000).toFixed(1)}억` : n >= 10000 ? `${(n/10000).toFixed(0)}만` : n.toLocaleString();
 
           // 로그 타입 → 라벨 매핑
@@ -2680,6 +2699,61 @@ export default function App({ user }) {
                   </div>
                 </div>
               )}
+
+              {/* [추가] 입력 누락 라벨 점검 */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                    <AlertCircle size={15} className="text-amber-500" /> 입력 누락 라벨 점검
+                  </h3>
+                  <span className="text-xs text-slate-400">{incompleteLabels.length}건 / 전체 {labels.length}</span>
+                </div>
+
+                {/* 항목별 카운트 카드 */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+                  {[
+                    { label: '단가 미입력', count: missingPrice.length, color: 'text-red-600' },
+                    { label: '공급처 미입력', count: missingVendor.length, color: 'text-orange-600' },
+                    { label: '종류 미입력', count: missingType.length, color: 'text-amber-600' },
+                    { label: '사이즈 미입력', count: missingSize.length, color: 'text-slate-600' },
+                    { label: '이미지 없음', count: missingImage.length, color: 'text-slate-600' },
+                    { label: '안전재고 미설정', count: missingSafety.length, color: 'text-slate-600' },
+                  ].map(it => (
+                    <div key={it.label} className="bg-slate-50 border border-slate-200 rounded p-2 text-center">
+                      <p className="text-xs text-slate-500">{it.label}</p>
+                      <p className={`text-lg font-bold ${it.count > 0 ? it.color : 'text-slate-300'}`}>{it.count}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* 누락 라벨 Top 6 */}
+                {incompleteTop.length === 0 ? (
+                  <div className="text-center py-6">
+                    <CheckCircle2 size={28} className="mx-auto text-slate-300 mb-2" />
+                    <p className="text-xs text-slate-400">모든 라벨이 정상 입력되어 있습니다</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-slate-500 mb-2">우선 점검 필요 (Top 6) — 단가/공급처/종류/사이즈 중 하나라도 빈 라벨</p>
+                    {incompleteTop.map(l => (
+                      <div key={l.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 transition-colors">
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 shrink-0">{l.brand}</span>
+                        <span className="flex-1 text-sm text-slate-700 truncate">{l.name} <span className="text-xs text-slate-400">({l.code} · {l.size || '-'})</span></span>
+                        <div className="flex gap-1 shrink-0">
+                          {l.missing.map(m => (
+                            <span key={m} className="text-xs font-medium px-1.5 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">{m}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {incompleteLabels.length > 6 && (
+                      <button onClick={() => setActiveTab('inventory')} className="text-xs text-slate-500 hover:text-slate-700 mt-2">
+                        전체 {incompleteLabels.length}건 보기 →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           );
         })()}

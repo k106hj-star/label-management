@@ -2184,27 +2184,100 @@ export default function App({ user }) {
           </button>
         </div>
         <nav className="flex-1 py-2 px-2 space-y-0.5">
-          {[
-            { id:'dashboard', label:'현황', icon:<LayoutDashboard size={17}/>, color:'text-slate-900', bg:'bg-slate-100' },
-            { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
-            { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
-            { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
-            { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
-            { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
-            { id:'logs', label:'재고로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-100' },
-            { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
-            // 관리자 전용 탭
-            ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
-          ].map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)}
-              className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>
-              <span className="shrink-0">{item.icon}</span>
-              {navExpanded && <span className="truncate">{item.label}</span>}
-              {navExpanded && item.badge > 0 && (
-                <span className="ml-auto bg-slate-400 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{item.badge > 99 ? '99+' : item.badge}</span>
-              )}
-            </button>
-          ))}
+          {(() => {
+            const items = [
+              { id:'dashboard', label:'현황', icon:<LayoutDashboard size={17}/>, color:'text-slate-900', bg:'bg-slate-100' },
+              { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
+              { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
+              { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
+              { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
+              {
+                id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100',
+                badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length,
+                expandable: true,
+                children: [
+                  { folderId: null, label:'전체 자료', icon:<FolderOpen size={13}/>, count: documents.length },
+                  { folderId: '라벨이미지', label:'라벨이미지', icon:<ImageIcon size={13}/>, count: documents.filter(d => d.category === '라벨이미지').length },
+                  { folderId: '재고리스트', label:'재고리스트', icon:<FileText size={13}/>, count: documents.filter(d => d.category === '재고리스트').length },
+                ],
+              },
+              { id:'logs', label:'재고로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-100' },
+              { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
+              // 관리자 전용 탭
+              ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
+            ];
+            return items.map(item => {
+              if (item.expandable) {
+                const isExpanded = docExpandedFolders.has('main-docs');
+                const isDocsActive = activeTab === item.id;
+                return (
+                  <div key={item.id} className="space-y-0.5">
+                    <div className="flex items-stretch">
+                      {navExpanded && (
+                        <button
+                          onClick={() => setDocExpandedFolders(prev => { const n = new Set(prev); n.has('main-docs') ? n.delete('main-docs') : n.add('main-docs'); return n; })}
+                          className="px-1 text-slate-400 hover:text-slate-600 rounded"
+                          aria-label="펼치기"
+                        >
+                          {isExpanded ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setDocActiveFolder(null);
+                          setDocSearch('');
+                          setDocImageBrandFilter('전체');
+                          setDocPage(1);
+                          if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, 'main-docs']));
+                        }}
+                        className={`relative flex-1 flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${isDocsActive && !docActiveFolder ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}
+                      >
+                        <span className="shrink-0">{item.icon}</span>
+                        {navExpanded && <span className="truncate">{item.label}</span>}
+                        {navExpanded && item.badge > 0 && (
+                          <span className="ml-auto bg-slate-400 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{item.badge > 99 ? '99+' : item.badge}</span>
+                        )}
+                      </button>
+                    </div>
+                    {navExpanded && isExpanded && (
+                      <div className="ml-5 border-l border-slate-200 pl-2 space-y-0.5">
+                        {item.children.map(child => {
+                          const isChildActive = isDocsActive && docActiveFolder === child.folderId;
+                          return (
+                            <button
+                              key={child.folderId || 'all'}
+                              onClick={() => {
+                                setActiveTab(item.id);
+                                setDocActiveFolder(child.folderId);
+                                setDocSearch('');
+                                setDocImageBrandFilter('전체');
+                                setDocPage(1);
+                              }}
+                              className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs transition-colors ${isChildActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                            >
+                              <span className="flex items-center gap-1.5">{child.icon}{child.label}</span>
+                              <span className="text-xs text-slate-400">{child.count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <button key={item.id} onClick={() => setActiveTab(item.id)}
+                  className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>
+                  <span className="shrink-0">{item.icon}</span>
+                  {navExpanded && <span className="truncate">{item.label}</span>}
+                  {navExpanded && item.badge > 0 && (
+                    <span className="ml-auto bg-slate-400 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{item.badge > 99 ? '99+' : item.badge}</span>
+                  )}
+                </button>
+              );
+            });
+          })()}
         </nav>
 
         {/* 사용자 정보 + 로그아웃 */}
@@ -4384,65 +4457,9 @@ export default function App({ user }) {
 
       {/* [6] 자료실 탭 */}
       {activeTab === 'docs' && (
-        <div className="flex gap-4 items-start">
-          {/* 좌측 폴더 트리 */}
-          <aside className="w-60 shrink-0 bg-white rounded-xl shadow-sm border border-slate-100 p-3 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
-            <div className="px-2 py-2 border-b border-slate-100 mb-2">
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <FolderOpen size={16} className="text-slate-600" /> 자료실
-              </h3>
-            </div>
-            <nav className="space-y-0.5 text-sm">
-              {/* 전체 자료 */}
-              <button
-                onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); setLogCategoryFilter(null); setDocPage(1); }}
-                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${!docActiveFolder ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                <span className="flex items-center gap-2">
-                  <FolderOpen size={14} /> 전체 자료
-                </span>
-                <span className="text-xs text-slate-400">{documents.length}</span>
-              </button>
-
-              {/* 라벨이미지 (단일 폴더 - 중첩 제거) */}
-              {(() => {
-                const count = documents.filter(d => d.category === '라벨이미지').length;
-                const isActive = docActiveFolder === '라벨이미지';
-                return (
-                  <button
-                    onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter('전체'); setDocSearch(''); setDocPage(1); }}
-                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <ImageIcon size={14} /> 라벨이미지
-                    </span>
-                    <span className="text-xs text-slate-400">{count}</span>
-                  </button>
-                );
-              })()}
-
-              {/* 재고리스트 */}
-              {(() => {
-                const count = documents.filter(d => d.category === '재고리스트').length;
-                const isActive = docActiveFolder === '재고리스트';
-                return (
-                  <button
-                    onClick={() => { setDocActiveFolder('재고리스트'); setDocSearch(''); setDocPage(1); }}
-                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <FileText size={14} /> 재고리스트
-                    </span>
-                    <span className="text-xs text-slate-400">{count}</span>
-                  </button>
-                );
-              })()}
-              {/* 재고로그는 메인 사이드바의 별도 탭으로 이동됨 */}
-            </nav>
-          </aside>
-
-          {/* 우측 콘텐츠 영역 */}
-          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+        <div>
+          {/* 자료실 콘텐츠 (좌측 트리 제거 → 풀 너비, 메인 사이드바에 하위 항목 통합) */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
           {/* 헤더 */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">

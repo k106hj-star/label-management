@@ -4359,8 +4359,8 @@ export default function App({ user }) {
                             />
                           )}
                         </th>
-                        <th className="p-3 text-left font-medium w-28">분류</th>
                         <th className="p-3 text-center font-medium w-16">번호</th>
+                        <th className="p-3 text-left font-medium w-28">분류</th>
                         <th className="p-3 text-left font-medium">품명</th>
                         <th className="p-3 text-left font-medium w-36">삭제일</th>
                         <th className="p-3 text-left font-medium w-24">삭제자</th>
@@ -4388,12 +4388,12 @@ export default function App({ user }) {
                                 />
                               )}
                             </td>
+                            <td className="p-3 text-center text-slate-500 text-xs font-medium">{t.originalNo != null ? t.originalNo : '-'}</td>
                             <td className="p-3">
                               <span className="text-xs font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 whitespace-nowrap">
                                 {categoryLabel}
                               </span>
                             </td>
-                            <td className="p-3 text-center text-slate-500 text-xs font-medium">{t.originalNo != null ? t.originalNo : '-'}</td>
                             <td className="p-3 font-medium text-slate-800">
                               {t.brand && t.brand !== '-' && <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 mr-2">{t.brand}</span>}
                               {t.name}

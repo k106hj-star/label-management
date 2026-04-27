@@ -874,9 +874,8 @@ export default function App({ user }) {
   const deleteLabel = (id) => {
     if (window.confirm('이 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
       const label = labels.find(l => l.id === id);
-      if (label) moveToTrash('label', label); // 휴지통 보관
+      if (label) moveToTrash('label', label); // 휴지통 보관 + 자동 로그 기록
       setLabels(prev => prev.filter(l => l.id !== id));
-      if (label) addLog({ type: 'delete', labelId: id, labelName: label.name, labelCode: label.code, labelBrand: label.brand, summary: `라벨 삭제: ${label.name} (${label.code})` });
       setProducts(prev => prev.map(p => ({
         ...p,
         bom: (p.bom || []).filter(b => b.labelId !== id)
@@ -948,9 +947,8 @@ export default function App({ user }) {
   const deleteProduct = (id) => {
     if (window.confirm('이 상품을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
       const prod = products.find(p => p.id === id);
-      if (prod) moveToTrash('product', prod);
+      if (prod) moveToTrash('product', prod); // 휴지통 보관 + 자동 로그 기록
       setProducts(products.filter(p => p.id !== id));
-      if (prod) addLog({ type: 'product_delete', productName: prod.name, productBrand: prod.brand, bomCount: prod.bom?.length || 0, summary: `상품 삭제: ${prod.name} (${prod.brand})` });
       if (selectedProduct?.id === id) {
         setSelectedProduct(null);
       }
@@ -1380,8 +1378,8 @@ export default function App({ user }) {
   const [trashPageSize, setTrashPageSize] = useState(30);
   const [trashSelectedIds, setTrashSelectedIds] = useState(new Set());
 
-  // 휴지통에 항목 추가 (소프트 삭제)
-  const moveToTrash = (type, item) => {
+  // 휴지통에 항목 추가 (소프트 삭제) — 항상 재고로그에 자동 기록
+  const moveToTrash = (type, item, opts = {}) => {
     const _uid = user?.email ? user.email.split('@')[0] : '';
     const _name = currentUserName || user?.displayName || '';
     // 삭제 당시 원본 카테고리에서의 번호 (1-base)
@@ -1396,22 +1394,51 @@ export default function App({ user }) {
       const idx = savedOrders.findIndex(o => o.id === item.id);
       if (idx >= 0) originalNo = idx + 1;
     }
+    const itemBrand = item.brand || item.productBrand || '-';
+    const itemName = item.name || item.productName || '(이름 없음)';
+    const itemCode = item.code || '';
     const trashEntry = {
       id: uniqueId(),
       type, // 'product' | 'label' | 'order' | 'other'
       itemId: item.id,
-      originalNo, // 삭제 당시 원본 카테고리에서의 위치(번호)
-      // 표시용 필드
-      brand: item.brand || item.productBrand || '-',
-      name: item.name || item.productName || '(이름 없음)',
-      code: item.code || '',
-      // 전체 데이터 (복구용)
+      originalNo,
+      brand: itemBrand,
+      name: itemName,
+      code: itemCode,
       data: JSON.parse(JSON.stringify(item)),
       deletedAt: new Date().toISOString(),
       deletedBy: _name || _uid || '알 수 없음',
       deletedById: _uid,
     };
     setTrash(prev => [trashEntry, ...prev]);
+    // [핵심] 휴지통 이동 시 항상 재고로그에 기록 (누락 방지)
+    // skipLog 옵션으로 외부에서 별도 로그를 남기는 경우만 스킵 가능
+    if (!opts.skipLog) {
+      const logTypeMap = { label: 'delete', product: 'product_delete', order: 'order_delete' };
+      const logType = logTypeMap[type] || 'delete';
+      const summary = type === 'label'
+        ? `라벨 삭제: ${itemName} (${itemCode})`
+        : type === 'product'
+          ? `상품 삭제: ${itemName} (${itemBrand})`
+          : type === 'order'
+            ? `발주 삭제: ${itemName}`
+            : `삭제: ${itemName}`;
+      addLog({
+        type: logType,
+        labelId: type === 'label' ? item.id : undefined,
+        labelName: type === 'label' ? itemName : undefined,
+        labelCode: type === 'label' ? itemCode : undefined,
+        labelBrand: type === 'label' ? itemBrand : undefined,
+        productName: (type === 'product' || type === 'order') ? itemName : undefined,
+        productBrand: type === 'product' ? itemBrand : undefined,
+        bomCount: type === 'product' ? (item.bom?.length || 0) : undefined,
+        factory: type === 'order' ? (item.factory || '-') : undefined,
+        orderer: type === 'order' ? (item.orderer || '-') : undefined,
+        itemCount: type === 'order' ? (item.details?.filter(d => d.shortage > 0).length || 0) : undefined,
+        totalCost: type === 'order' ? item.totalCost : undefined,
+        summary,
+      });
+    }
   };
 
   // 휴지통에서 복구
@@ -2744,7 +2771,16 @@ export default function App({ user }) {
                 <button onClick={() => { setBulkEditFields({ vendor: '', type: '', brand: '' }); setShowBulkEditModal(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
                   <Pencil size={13} /> 일괄 수정
                 </button>
-                <button onClick={() => { if (window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 삭제하시겠습니까?`)) { const deletedLabels = labels.filter(l => selectedLabelIds.has(l.id)); setLabels(prev => prev.filter(l => !selectedLabelIds.has(l.id))); addLog({ type: 'bulk_delete', count: deletedLabels.length, labelNames: deletedLabels.map(l => l.name), summary: `일괄 삭제: ${deletedLabels.length}개 라벨` }); setSelectedLabelIds(new Set()); } }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
+                <button onClick={() => {
+                  if (!window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.`)) return;
+                  const deletedLabels = labels.filter(l => selectedLabelIds.has(l.id));
+                  // 각 라벨을 휴지통으로 이동 (자동 로그 기록 포함)
+                  deletedLabels.forEach(l => moveToTrash('label', l, { skipLog: true }));
+                  setLabels(prev => prev.filter(l => !selectedLabelIds.has(l.id)));
+                  // 일괄 삭제는 요약 로그 1건만 추가
+                  addLog({ type: 'bulk_delete', count: deletedLabels.length, labelNames: deletedLabels.map(l => `${l.name} (${l.code})`), summary: `일괄 삭제: ${deletedLabels.length}개 라벨` });
+                  setSelectedLabelIds(new Set());
+                }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
                   <Trash2 size={13} /> 일괄 삭제
                 </button>
                 <button onClick={() => setSelectedLabelIds(new Set())} className="ml-auto text-xs text-slate-500 hover:text-slate-700">선택 해제</button>
@@ -3814,8 +3850,7 @@ export default function App({ user }) {
                                 <button onClick={() => {
                                   setOpenOrderMenuId(null);
                                   if (!window.confirm('이 발주를 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) return;
-                                  moveToTrash('order', order);
-                                  addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` });
+                                  moveToTrash('order', order); // 휴지통 보관 + 자동 로그 기록
                                   setSavedOrders(prev => prev.filter(o => o.id !== order.id));
                                 }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
                                   <Trash2 size={14} /> 삭제

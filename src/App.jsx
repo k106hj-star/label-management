@@ -1488,8 +1488,8 @@ export default function App({ user }) {
   const [docUploading, setDocUploading] = useState(false);
   // 재고로그 카테고리 폴더 필터 (null = 카테고리 폴더 그리드 표시, 아닌 경우 해당 카테고리 로그만 표시)
   const [logCategoryFilter, setLogCategoryFilter] = useState(null);
-  // [트리 뷰] 펼쳐진 폴더 (라벨이미지/재고로그 기본 펼침)
-  const [docExpandedFolders, setDocExpandedFolders] = useState(new Set(['라벨이미지', '재고로그']));
+  // [트리 뷰] 펼쳐진 폴더 (메인 사이드바: 자료실/재고로그 기본 펼침)
+  const [docExpandedFolders, setDocExpandedFolders] = useState(new Set(['라벨이미지', '재고로그', 'main-docs', 'main-logs']));
   const toggleDocFolder = (id) => setDocExpandedFolders(prev => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
@@ -2194,28 +2194,77 @@ export default function App({ user }) {
               {
                 id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100',
                 badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length,
-                expandable: true,
+                expandable: 'docs',
                 children: [
                   { folderId: null, label:'전체 자료', icon:<FolderOpen size={13}/>, count: documents.length },
                   { folderId: '라벨이미지', label:'라벨이미지', icon:<ImageIcon size={13}/>, count: documents.filter(d => d.category === '라벨이미지').length },
                   { folderId: '재고리스트', label:'재고리스트', icon:<FileText size={13}/>, count: documents.filter(d => d.category === '재고리스트').length },
                 ],
               },
-              { id:'logs', label:'재고로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-100' },
+              {
+                id:'logs', label:'재고로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-100',
+                expandable: 'logs',
+                children: [
+                  { catId: 'all', label:'전체 보기', icon:<History size={13}/>, count: stockLogs.length },
+                  ...LOG_CATEGORIES.map(cat => ({
+                    catId: cat.id,
+                    label: cat.label,
+                    icon: <cat.icon size={13}/>,
+                    count: stockLogs.filter(log => cat.types.includes(log.type)).length,
+                  })),
+                ],
+              },
               { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
               // 관리자 전용 탭
               ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
             ];
             return items.map(item => {
               if (item.expandable) {
-                const isExpanded = docExpandedFolders.has('main-docs');
-                const isDocsActive = activeTab === item.id;
+                const expandKey = `main-${item.expandable}`;
+                const isExpanded = docExpandedFolders.has(expandKey);
+                const isTabActive = activeTab === item.id;
+                // 메인(부모) 활성 여부: 자료실은 docActiveFolder 없을 때, 재고로그는 catId가 없거나 'all'일 때
+                const isParentActive = item.expandable === 'docs'
+                  ? (isTabActive && !docActiveFolder)
+                  : (isTabActive && (logCategoryFilter === 'all' || logCategoryFilter === null));
+                const onMainClick = () => {
+                  setActiveTab(item.id);
+                  if (item.expandable === 'docs') {
+                    setDocActiveFolder(null);
+                    setDocSearch('');
+                    setDocImageBrandFilter('전체');
+                    setDocPage(1);
+                  } else if (item.expandable === 'logs') {
+                    setLogCategoryFilter('all');
+                    setLogSearch('');
+                    setLogPage(1);
+                  }
+                  if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, expandKey]));
+                };
+                const onChildClick = (child) => {
+                  setActiveTab(item.id);
+                  if (item.expandable === 'docs') {
+                    setDocActiveFolder(child.folderId);
+                    setDocSearch('');
+                    setDocImageBrandFilter('전체');
+                    setDocPage(1);
+                  } else if (item.expandable === 'logs') {
+                    setLogCategoryFilter(child.catId);
+                    setLogSearch('');
+                    setLogPage(1);
+                  }
+                };
+                const isChildActiveFn = (child) => {
+                  if (item.expandable === 'docs') return isTabActive && docActiveFolder === child.folderId;
+                  if (item.expandable === 'logs') return isTabActive && (logCategoryFilter === child.catId || (child.catId === 'all' && (logCategoryFilter === null || logCategoryFilter === 'all')));
+                  return false;
+                };
                 return (
                   <div key={item.id} className="space-y-0.5">
                     <div className="flex items-stretch">
                       {navExpanded && (
                         <button
-                          onClick={() => setDocExpandedFolders(prev => { const n = new Set(prev); n.has('main-docs') ? n.delete('main-docs') : n.add('main-docs'); return n; })}
+                          onClick={() => setDocExpandedFolders(prev => { const n = new Set(prev); n.has(expandKey) ? n.delete(expandKey) : n.add(expandKey); return n; })}
                           className="px-1 text-slate-400 hover:text-slate-600 rounded"
                           aria-label="펼치기"
                         >
@@ -2223,15 +2272,8 @@ export default function App({ user }) {
                         </button>
                       )}
                       <button
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setDocActiveFolder(null);
-                          setDocSearch('');
-                          setDocImageBrandFilter('전체');
-                          setDocPage(1);
-                          if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, 'main-docs']));
-                        }}
-                        className={`relative flex-1 flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${isDocsActive && !docActiveFolder ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}
+                        onClick={onMainClick}
+                        className={`relative flex-1 flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${isParentActive ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}
                       >
                         <span className="shrink-0">{item.icon}</span>
                         {navExpanded && <span className="truncate">{item.label}</span>}
@@ -2243,18 +2285,12 @@ export default function App({ user }) {
                     {navExpanded && isExpanded && (
                       <div className="ml-5 border-l border-slate-200 pl-2 space-y-0.5">
                         {item.children.map(child => {
-                          const isChildActive = isDocsActive && docActiveFolder === child.folderId;
+                          const childKey = child.folderId !== undefined ? (child.folderId || 'all') : child.catId;
                           return (
                             <button
-                              key={child.folderId || 'all'}
-                              onClick={() => {
-                                setActiveTab(item.id);
-                                setDocActiveFolder(child.folderId);
-                                setDocSearch('');
-                                setDocImageBrandFilter('전체');
-                                setDocPage(1);
-                              }}
-                              className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs transition-colors ${isChildActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                              key={childKey}
+                              onClick={() => onChildClick(child)}
+                              className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded text-xs transition-colors ${isChildActiveFn(child) ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
                             >
                               <span className="flex items-center gap-1.5">{child.icon}{child.label}</span>
                               <span className="text-xs text-slate-400">{child.count}</span>

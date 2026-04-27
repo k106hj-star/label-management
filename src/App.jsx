@@ -365,6 +365,92 @@ const initialProducts = [
 // 데이터 버전 (CSV 데이터 업데이트 시 증가)
 const DATA_VERSION = 2;
 
+// ============================================================================
+// 현황 대시보드: 발주수량 Top 10 (기간별)
+// ============================================================================
+function DashboardTopOrderedLabels({ savedOrders }) {
+  const [period, setPeriod] = useState('week'); // 'week' | 'month' | '3month'
+  const PERIOD_DAYS = { week: 7, month: 30, '3month': 90 };
+  const PERIOD_LABEL = { week: '1주일', month: '1개월', '3month': '3개월' };
+
+  const cutoff = Date.now() - PERIOD_DAYS[period] * 86400000;
+  // 해당 기간 내 발주 집계
+  const periodOrders = (savedOrders || []).filter(o => {
+    const id = typeof o.id === 'number' ? o.id : 0;
+    return id >= cutoff;
+  });
+  // 라벨별 발주수량(shortage) + 필요수량(needQty) 합계
+  const labelStats = {};
+  periodOrders.forEach(o => {
+    (o.details || []).forEach(d => {
+      const key = d.id || d.code || d.name;
+      if (!key) return;
+      if (!labelStats[key]) {
+        labelStats[key] = {
+          id: d.id, code: d.code, brand: d.brand, name: d.labelName || d.name, size: d.size,
+          totalShortage: 0, totalNeedQty: 0, orderCount: 0,
+        };
+      }
+      labelStats[key].totalShortage += Number(d.shortage || 0);
+      labelStats[key].totalNeedQty += Number(d.needQty || d.shortage || 0);
+      labelStats[key].orderCount += 1;
+    });
+  });
+  const top10 = Object.values(labelStats)
+    .filter(s => s.totalShortage > 0)
+    .sort((a, b) => b.totalShortage - a.totalShortage)
+    .slice(0, 10);
+  const maxShortage = top10[0]?.totalShortage || 1;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+          📦 발주수량 Top 10
+          <span className="text-xs font-normal text-slate-400">— {PERIOD_LABEL[period]} 누적 발주 기준</span>
+        </h3>
+        <div className="flex gap-1">
+          {['week', 'month', '3month'].map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${period === p ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {PERIOD_LABEL[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {top10.length === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-xs text-slate-400">{PERIOD_LABEL[period]} 동안 발주 내역이 없습니다</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {top10.map((s, idx) => (
+            <div key={(s.id || s.code) + '-' + idx} className="flex items-center gap-3">
+              <span className="text-xs text-slate-400 w-6 text-right shrink-0 font-medium">{idx + 1}</span>
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 shrink-0">{s.brand || '-'}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-700 truncate">
+                  {s.name} <span className="text-xs text-slate-400">({s.size || '-'} · {s.code})</span>
+                </p>
+                <div className="h-1.5 bg-slate-100 rounded mt-1 overflow-hidden">
+                  <div className="h-full bg-slate-400 rounded" style={{ width: `${(s.totalShortage / maxShortage) * 100}%` }} />
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-bold text-slate-900">{s.totalShortage.toLocaleString()}<span className="text-xs font-normal text-slate-400 ml-0.5">개</span></p>
+                <p className="text-xs text-slate-400">{s.orderCount}회 발주</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-slate-400 mt-4 pt-3 border-t border-slate-100">
+        💡 발주수량(shortage) 합계 기준 — 같은 라벨이 여러 발주에 포함되면 합산됩니다.
+      </p>
+    </div>
+  );
+}
+
 export default function App({ user }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [lowStockExpanded, setLowStockExpanded] = useState(false);
@@ -2613,72 +2699,9 @@ export default function App({ user }) {
                 </div>
               </div>
 
-              {/* [하단] 안전재고 미달 + 최근 활동 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* 안전재고 미달 Top 6 */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      <AlertCircle size={15} className="text-red-500" /> 안전재고 미달 Top
-                    </h3>
-                    {lowStockLabels.length > 6 && (
-                      <button onClick={() => setActiveTab('inventory')} className="text-xs text-slate-500 hover:text-slate-700">
-                        전체 {lowStockLabels.length}건 →
-                      </button>
-                    )}
-                  </div>
-                  {lowStockTop.length === 0 ? (
-                    <div className="text-center py-8">
-                      <CheckCircle2 size={28} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-xs text-slate-400">안전재고 미달 라벨이 없습니다</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {lowStockTop.map(l => {
-                        const gap = Number(l.safetyStock) - Number(l.stock ?? 0);
-                        return (
-                          <div key={l.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 transition-colors">
-                            <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 shrink-0">{l.brand}</span>
-                            <span className="flex-1 text-sm text-slate-700 truncate">{l.name} <span className="text-xs text-slate-400">({l.size})</span></span>
-                            <span className="text-xs text-slate-500 shrink-0">재고 {Number(l.stock ?? 0).toLocaleString()} / 안전 {Number(l.safetyStock).toLocaleString()}</span>
-                            <span className="text-xs font-semibold text-red-600 shrink-0 w-16 text-right">-{gap.toLocaleString()}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+              {/* [하단] 발주수량 Top 10 (기간별) */}
+              <DashboardTopOrderedLabels savedOrders={savedOrders} />
 
-                {/* 최근 활동 */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                      <Activity size={15} className="text-slate-500" /> 최근 활동
-                    </h3>
-                    <div className="flex gap-2 text-xs">
-                      <span className="text-slate-500">오늘 <span className="font-semibold text-slate-800">{todayLogs}</span></span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-slate-500">7일 <span className="font-semibold text-slate-800">{week7Logs}</span></span>
-                    </div>
-                  </div>
-                  {recentLogs.length === 0 ? (
-                    <div className="text-center py-8">
-                      <History size={28} className="mx-auto text-slate-300 mb-2" />
-                      <p className="text-xs text-slate-400">활동 내역이 없습니다</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {recentLogs.map(log => (
-                        <div key={log.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 transition-colors">
-                          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 w-20 text-center">{logTypeLabels[log.type] || log.type}</span>
-                          <span className="flex-1 text-xs text-slate-700 truncate">{log.summary || log.labelName || log.productName || '-'}</span>
-                          <span className="text-xs text-slate-400 shrink-0 whitespace-nowrap">{log.date?.split(' ').slice(-2).join(' ') || ''}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* [추가] 최근 확정 발주 */}
               {recentApplied.length > 0 && (

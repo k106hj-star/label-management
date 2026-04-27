@@ -1363,10 +1363,23 @@ export default function App({ user }) {
   const moveToTrash = (type, item) => {
     const _uid = user?.email ? user.email.split('@')[0] : '';
     const _name = currentUserName || user?.displayName || '';
+    // 삭제 당시 원본 카테고리에서의 번호 (1-base)
+    let originalNo = null;
+    if (type === 'label') {
+      const idx = labels.findIndex(l => l.id === item.id);
+      if (idx >= 0) originalNo = idx + 1;
+    } else if (type === 'product') {
+      const idx = products.findIndex(p => p.id === item.id);
+      if (idx >= 0) originalNo = idx + 1;
+    } else if (type === 'order') {
+      const idx = savedOrders.findIndex(o => o.id === item.id);
+      if (idx >= 0) originalNo = idx + 1;
+    }
     const trashEntry = {
       id: uniqueId(),
-      type, // 'product' | 'label' | 'order'
+      type, // 'product' | 'label' | 'order' | 'other'
       itemId: item.id,
+      originalNo, // 삭제 당시 원본 카테고리에서의 위치(번호)
       // 표시용 필드
       brand: item.brand || item.productBrand || '-',
       name: item.name || item.productName || '(이름 없음)',
@@ -4213,21 +4226,25 @@ export default function App({ user }) {
                             />
                           )}
                         </th>
-                        <th className="p-3 text-left font-medium w-20">No.</th>
-                        <th className="p-3 text-left font-medium w-20">브랜드</th>
+                        <th className="p-3 text-left font-medium w-28">분류</th>
+                        <th className="p-3 text-center font-medium w-16">번호</th>
                         <th className="p-3 text-left font-medium">품명</th>
-                        <th className="p-3 text-left font-medium w-32">삭제일</th>
+                        <th className="p-3 text-left font-medium w-36">삭제일</th>
                         <th className="p-3 text-left font-medium w-24">삭제자</th>
                         <th className="p-3 text-center font-medium w-32">관리</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {paged.map((t, idx) => {
+                      {paged.map((t) => {
                         const elapsedMs = now - new Date(t.deletedAt).getTime();
                         const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
                         const showElapsed = elapsedMs >= ELAPSE_THRESHOLD_MS;
                         const dateStr = new Date(t.deletedAt).toLocaleDateString('ko-KR').replace(/\./g, '.').replace(/\s+/g, '');
-                        const typeLabel = t.type === 'product' ? '상품' : t.type === 'label' ? '라벨' : t.type === 'order' ? '발주' : t.type;
+                        const categoryLabel =
+                          t.type === 'label' ? '라벨 삭제' :
+                          t.type === 'product' ? '상품 삭제' :
+                          t.type === 'order' ? '발주 삭제' :
+                          '기타';
                         return (
                           <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${trashSelectedIds.has(t.id) ? 'bg-slate-100' : ''}`}>
                             <td className="p-3 text-center">
@@ -4238,12 +4255,17 @@ export default function App({ user }) {
                                 />
                               )}
                             </td>
-                            <td className="p-3 text-slate-500 text-xs">{(trashPage-1)*trashPageSize + idx + 1}</td>
                             <td className="p-3">
-                              <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{t.brand || '-'}</span>
-                              <span className="text-xs text-slate-400 ml-1">{typeLabel}</span>
+                              <span className="text-xs font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 whitespace-nowrap">
+                                {categoryLabel}
+                              </span>
                             </td>
-                            <td className="p-3 font-medium text-slate-800">{t.name} {t.code && <span className="text-xs text-slate-400 font-normal ml-1">{t.code}</span>}</td>
+                            <td className="p-3 text-center text-slate-500 text-xs font-medium">{t.originalNo != null ? t.originalNo : '-'}</td>
+                            <td className="p-3 font-medium text-slate-800">
+                              {t.brand && t.brand !== '-' && <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 mr-2">{t.brand}</span>}
+                              {t.name}
+                              {t.code && <span className="text-xs text-slate-400 font-normal ml-1">{t.code}</span>}
+                            </td>
                             <td className="p-3 text-slate-500 text-xs whitespace-nowrap">
                               {dateStr}
                               {showElapsed && (

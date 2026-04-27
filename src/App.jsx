@@ -125,7 +125,7 @@ function parseCSV(csvText) {
   const iReserve  = col(['최소보유수량']);
   const iPrice    = col(['단가']);
   const iVendor   = col(['공급처']);
-  const iDelivery = col(['납품유형', '납품 유형', '납품']);
+  const iDelivery = col(['입고처', '납품유형', '납품 유형', '납품']);
 
   const results = [];
   for (let i = 1; i < lines.length; i++) {
@@ -574,7 +574,7 @@ export default function App({ user }) {
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
     const original = labels.find(l => l.id === editLabel.id);
-    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '납품유형' };
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
     const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
     if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
@@ -748,7 +748,7 @@ export default function App({ user }) {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처,납품유형';
+    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처,입고처';
     const rows = labels.map(l => [
       l.brand, l.type, l.name, l.code, l.size,
       l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? '',
@@ -767,7 +767,7 @@ export default function App({ user }) {
   // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
   const CSV_ALWAYS_UPDATE = ['stock'];
   const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor', 'deliveryType'];
-  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '납품유형' };
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
 
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
@@ -2479,7 +2479,7 @@ export default function App({ user }) {
                     <Package size={16} className="text-slate-400" />
                   </div>
                   <p className="text-3xl font-bold text-slate-900">{totalLabels.toLocaleString()}<span className="text-sm font-normal text-slate-400 ml-1">종</span></p>
-                  <p className="text-xs text-slate-400 mt-1">🏢 본사 {hqLabels.length} · 🏭 공장 {factoryLabels.length}</p>
+                  <p className="text-xs text-slate-400 mt-1">🏢 본사 입고 {hqLabels.length} · 🏭 공장 입고 {factoryLabels.length}</p>
                 </button>
 
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
@@ -2488,7 +2488,7 @@ export default function App({ user }) {
                     <Activity size={16} className="text-slate-400" />
                   </div>
                   <p className="text-3xl font-bold text-slate-900">{formatCurrency(totalValue)}<span className="text-sm font-normal text-slate-400 ml-1">원</span></p>
-                  <p className="text-xs text-slate-400 mt-1">본사재고 {totalStock.toLocaleString()}개 · 공장납품 제외</p>
+                  <p className="text-xs text-slate-400 mt-1">본사재고 {totalStock.toLocaleString()}개 · 공장 입고 제외</p>
                 </div>
 
                 <button onClick={() => setActiveTab('orders')}
@@ -2816,6 +2816,7 @@ export default function App({ user }) {
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">최소보유</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">단가</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">공급처</th>
+                    <th className="p-3 font-medium text-center sticky top-0 bg-slate-50 z-10">입고처</th>
                     <th className="p-3 font-medium text-center sticky top-0 bg-slate-50 z-10">관리</th>
                   </tr>
                 </thead>
@@ -2865,32 +2866,7 @@ export default function App({ user }) {
                       <td className="p-3 font-semibold text-slate-800">{l.name}</td>
                       <td className="p-3 text-sm text-slate-500">{l.code}</td>
                       <td className="p-3 text-sm">{l.size}</td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {(() => {
-                            const dt = l.deliveryType || '본사납품';
-                            const isFactory = dt === '공장납품';
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const newDt = isFactory ? '본사납품' : '공장납품';
-                                  const before = dt;
-                                  setLabels(prev => prev.map(lb => lb.id === l.id ? { ...lb, deliveryType: newDt } : lb));
-                                  addLog({ type: 'edit', labelId: l.id, labelName: l.name, labelCode: l.code, changes: [{ field: '납품유형', before, after: newDt }], summary: `납품유형 변경: ${l.name} (${l.code}) ${before}→${newDt}` });
-                                }}
-                                title={isFactory ? '공장납품 (본사재고 차감 안 함) - 클릭하여 본사납품으로 변경' : '본사납품 (본사재고 차감) - 클릭하여 공장납품으로 변경'}
-                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${isFactory ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
-                              >
-                                {isFactory ? '🏭 공장' : '🏢 본사'}
-                              </button>
-                            );
-                          })()}
-                          <span className={`font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>
-                            {l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : Number(l.stock ?? 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </td>
+                      <td className={`p-3 text-right font-bold ${l.stock < 0 ? 'text-red-600' : l.stock > 0 && l.stock >= (l.safetyStock || 0) ? 'text-blue-600' : l.stock > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{l.stock < 0 ? `-${Math.abs(l.stock).toLocaleString()}` : Number(l.stock ?? 0).toLocaleString()}</td>
                       <td className="p-3 text-right text-sm">
                         <input type="number" min="0" value={l.safetyStock || 0} onFocus={e => { safetyStockPrev.current[l.id] = parseInt(e.target.value) || 0; }} onChange={e => setLabels(labels.map(lb => lb.id === l.id ? { ...lb, safetyStock: parseInt(e.target.value) || 0 } : lb))} onBlur={e => { const newVal = parseInt(e.target.value) || 0; const oldVal = safetyStockPrev.current[l.id]; if (oldVal !== undefined && oldVal !== newVal) addLog({ type: 'safety_stock', labelId: l.id, labelName: l.name, labelCode: l.code, before: oldVal, after: newVal, summary: `안전재고 변경: ${l.name} (${l.code}) ${oldVal}→${newVal}` }); delete safetyStockPrev.current[l.id]; }} className="w-16 p-1 border border-slate-200 rounded text-right text-sm bg-white" />
                       </td>
@@ -2899,6 +2875,27 @@ export default function App({ user }) {
                       </td>
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>
+                      <td className="p-3 text-center">
+                        {(() => {
+                          const dt = l.deliveryType || '본사납품';
+                          const isFactory = dt === '공장납품';
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newDt = isFactory ? '본사납품' : '공장납품';
+                                const before = dt;
+                                setLabels(prev => prev.map(lb => lb.id === l.id ? { ...lb, deliveryType: newDt } : lb));
+                                addLog({ type: 'edit', labelId: l.id, labelName: l.name, labelCode: l.code, changes: [{ field: '입고처', before, after: newDt }], summary: `입고처 변경: ${l.name} (${l.code}) ${before}→${newDt}` });
+                              }}
+                              title={isFactory ? '공장 입고 (본사재고 차감 안 함) - 클릭하여 본사로 변경' : '본사 입고 (본사재고 차감) - 클릭하여 공장으로 변경'}
+                              className={`text-xs font-bold px-2 py-1 rounded border transition-colors ${isFactory ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
+                            >
+                              {isFactory ? '🏭 공장' : '🏢 본사'}
+                            </button>
+                          );
+                        })()}
+                      </td>
                       <td className="p-3 text-center relative">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => setLabelLogModal(l)} className="text-slate-400 hover:text-blue-500 p-1" title="발주 로그 보기">
@@ -2986,9 +2983,9 @@ export default function App({ user }) {
                       <input type="text" placeholder="변경 안 함" value={bulkEditFields.vendor} onChange={e => setBulkEditFields(p => ({ ...p, vendor: e.target.value }))} className="w-full p-2 border border-slate-200 rounded-lg text-sm" />
                     </div>
                     <div className="col-span-3">
-                      <label className="block text-xs font-medium text-slate-600 mb-1">납품유형</label>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">입고처</label>
                       <div className="flex gap-2">
-                        {[{ v: '', label: '변경 안 함' }, { v: '본사납품', label: '🏢 본사납품' }, { v: '공장납품', label: '🏭 공장납품' }].map(opt => (
+                        {[{ v: '', label: '변경 안 함' }, { v: '본사납품', label: '🏢 본사' }, { v: '공장납품', label: '🏭 공장' }].map(opt => (
                           <button key={opt.v} type="button"
                             onClick={() => setBulkEditFields(p => ({ ...p, deliveryType: opt.v }))}
                             className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${bulkEditFields.deliveryType === opt.v ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
@@ -3005,7 +3002,7 @@ export default function App({ user }) {
                       if (bulkEditFields.brand) changedFields.push(`브랜드→${bulkEditFields.brand}`);
                       if (bulkEditFields.type) changedFields.push(`종류→${bulkEditFields.type}`);
                       if (bulkEditFields.vendor) changedFields.push(`공급처→${bulkEditFields.vendor}`);
-                      if (bulkEditFields.deliveryType) changedFields.push(`납품유형→${bulkEditFields.deliveryType}`);
+                      if (bulkEditFields.deliveryType) changedFields.push(`입고처→${bulkEditFields.deliveryType}`);
                       setLabels(prev => prev.map(l => {
                         if (!selectedLabelIds.has(l.id)) return l;
                         return {
@@ -3077,13 +3074,13 @@ export default function App({ user }) {
                       <input type="text" value={newLabel.vendor} onChange={e => setNewLabel({ ...newLabel, vendor: e.target.value })} placeholder="예: 스마트, SB라벨" className="w-full p-2 border border-slate-300 rounded text-sm" />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">납품유형 <span className="text-slate-400">(발주 시 본사재고 차감 여부)</span></label>
+                      <label className="block text-xs text-slate-500 mb-1">입고처 <span className="text-slate-400">(발주 시 본사재고 차감 여부)</span></label>
                       <div className="flex gap-2">
                         {['본사납품', '공장납품'].map(dt => (
                           <button key={dt} type="button"
                             onClick={() => setNewLabel({ ...newLabel, deliveryType: dt })}
                             className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${(newLabel.deliveryType || '본사납품') === dt ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
-                            {dt === '본사납품' ? '🏢 본사납품' : '🏭 공장납품'}
+                            {dt === '본사납품' ? '🏢 본사' : '🏭 공장'}
                           </button>
                         ))}
                       </div>
@@ -4281,7 +4278,7 @@ export default function App({ user }) {
                     <button key={dt} type="button"
                       onClick={() => setEditLabel({ ...editLabel, deliveryType: dt })}
                       className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${(editLabel.deliveryType || '본사납품') === dt ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
-                      {dt === '본사납품' ? '🏢 본사납품' : '🏭 공장납품'}
+                      {dt === '본사납품' ? '🏢 본사' : '🏭 공장'}
                     </button>
                   ))}
                 </div>

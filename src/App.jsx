@@ -1061,9 +1061,14 @@ export default function App({ user }) {
     if (order.applied) { alert('이미 발주 확정된 내역입니다.'); return; }
     // [C5] 이미 처리 중이면 무시
     if (processingOrderIds.has(order.id)) return;
-    const orderItems = (order.details || []).filter(d => d.shortage > 0);
+    // [수정] 생산에 사용된 needQty(필요수량) 기준으로 차감 (shortage가 아닌)
+    // 공장납품 라벨은 트랜잭션 내부에서 본사재고 차감 제외 처리됨
+    const orderItems = (order.details || []).filter(d => Number(d.needQty || d.shortage || 0) > 0);
     if (orderItems.length === 0) { alert('발주 수량이 없습니다.'); return; }
-    const confirmMsg = `발주 확정 시 재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => `• ${d.labelName || d.name} (${d.size}): ${d.shortage.toLocaleString()}개`).join('\n')}\n\n진행하시겠습니까?`;
+    const confirmMsg = `발주 확정 시 본사재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => {
+      const qty = Number(d.needQty || d.shortage || 0);
+      return `• ${d.labelName || d.name} (${d.size}): ${qty.toLocaleString()}개${d.shortage > 0 ? ` [발주필요 ${d.shortage.toLocaleString()}개]` : ''}`;
+    }).join('\n')}\n\n진행하시겠습니까?`;
     if (!window.confirm(confirmMsg)) return;
     const appliedAt = new Date().toLocaleString('ko-KR');
     const _uid = user?.email ? user.email.split('@')[0] : '';
@@ -1087,12 +1092,13 @@ export default function App({ user }) {
         if (!targetOrder) throw new Error('order_not_found');
         if (targetOrder.applied) throw new Error('already_applied');
 
-        // 재고 차감 (Firestore 기준) — 공장납품 라벨은 차감 제외
+        // 재고 차감 (Firestore 기준) — needQty(필요수량) 기준 + 공장납품 라벨 제외
         logItems = orderItems.map(d => {
           const lbl = fsLabels.find(l => l.id === d.id);
           const before = lbl ? Number(lbl.stock || 0) : 0;
           const isFactory = (lbl?.deliveryType || '본사납품') === '공장납품';
-          const change = isFactory ? 0 : -d.shortage;
+          const deductQty = Number(d.needQty || d.shortage || 0);
+          const change = isFactory ? 0 : -deductQty;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
         const updatedLabels = fsLabels.map(lbl => {
@@ -1100,7 +1106,8 @@ export default function App({ user }) {
           if (!matched) return lbl;
           const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
           if (isFactory) return lbl; // 공장납품은 본사재고에서 차감 안 함
-          return { ...lbl, stock: Number(lbl.stock || 0) - matched.shortage };
+          const deductQty = Number(matched.needQty || matched.shortage || 0);
+          return { ...lbl, stock: Number(lbl.stock || 0) - deductQty };
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -1128,8 +1135,9 @@ export default function App({ user }) {
   const cancelOrderFromStock = async (order) => {
     if (!order.applied) return;
     if (processingOrderIds.has(order.id)) return; // [C5] 연타 방지
-    const orderItems = (order.details || []).filter(d => d.shortage > 0);
-    if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 재고 수량이 원복됩니다.`)) return;
+    // [수정] needQty 기준 (applyOrderToStock와 일치)
+    const orderItems = (order.details || []).filter(d => Number(d.needQty || d.shortage || 0) > 0);
+    if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 본사재고 수량이 원복됩니다.`)) return;
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';
     setProcessingOrderIds(prev => { const n = new Set(prev); n.add(order.id); return n; });
@@ -1153,15 +1161,17 @@ export default function App({ user }) {
           const lbl = fsLabels.find(l => l.id === d.id);
           const before = lbl ? Number(lbl.stock || 0) : 0;
           const isFactory = (lbl?.deliveryType || '본사납품') === '공장납품';
-          const change = isFactory ? 0 : +d.shortage;
+          const restoreQty = Number(d.needQty || d.shortage || 0);
+          const change = isFactory ? 0 : +restoreQty;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
         const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
           if (!matched) return lbl;
           const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
-          if (isFactory) return lbl; // 공장납품은 본사재고에 영향 없음
-          return { ...lbl, stock: Number(lbl.stock || 0) + matched.shortage };
+          if (isFactory) return lbl;
+          const restoreQty = Number(matched.needQty || matched.shortage || 0);
+          return { ...lbl, stock: Number(lbl.stock || 0) + restoreQty };
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -3933,13 +3943,14 @@ export default function App({ user }) {
                               <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                               <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">필요수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주필요</th>
                               <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {items.map((d, i) => (
-                              <tr key={i} className={d.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50 opacity-40'}>
+                              <tr key={i} className={`hover:bg-slate-50 ${d.shortage > 0 ? '' : ''}`}>
                                 <td className="p-3 text-slate-400 whitespace-nowrap">{dateStr}</td>
                                 <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.orderer || '-') : (viewOrder.orderer || '-')}</td>
                                 <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.factory || '-') : (viewOrder.factory || '-')}</td>
@@ -3971,6 +3982,9 @@ export default function App({ user }) {
                                 </td>
                                 <td className="p-3 text-slate-700">{viewOrder.productName || '-'}</td>
                                 <td className="p-3 text-center text-slate-700 text-base font-bold">{d.size || '-'}</td>
+                                <td className="p-3 text-right font-bold text-slate-700">
+                                  {Number(d.needQty || d.shortage || 0).toLocaleString()}개
+                                </td>
                                 <td className="p-3 text-right font-bold">
                                   {viewOrderEditMode
                                     ? <input
@@ -3984,7 +3998,7 @@ export default function App({ user }) {
                                         })}
                                         className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300"
                                       />
-                                    : <span className={d.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>{d.shortage.toLocaleString()}개</span>
+                                    : <span className={d.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>{d.shortage > 0 ? `${d.shortage.toLocaleString()}개` : '-'}</span>
                                   }
                                 </td>
                                 <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrderEditMode ? (viewOrderEdits.note || '-') : (viewOrder.note || '-')}</td>

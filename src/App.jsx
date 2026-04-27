@@ -120,7 +120,7 @@ function parseCSV(csvText) {
   const iType   = col(['종류']);
   const iCode   = col(['품번']);
   const iSize   = col(['사이즈']);
-  const iStock  = col(['재고수량', '현재고']);
+  const iStock  = col(['본사재고', '재고수량', '현재고']);
   const iSafety   = col(['안전재고']);
   const iReserve  = col(['최소보유수량']);
   const iPrice    = col(['단가']);
@@ -564,7 +564,7 @@ export default function App({ user }) {
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
     const original = labels.find(l => l.id === editLabel.id);
-    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '현재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
     const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
     if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
@@ -738,7 +738,7 @@ export default function App({ user }) {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = '브랜드,종류,라벨명,품번,사이즈,현재고,안전재고,최소보유수량,단가,공급처';
+    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처';
     const rows = labels.map(l => [
       l.brand, l.type, l.name, l.code, l.size,
       l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? ''
@@ -756,7 +756,7 @@ export default function App({ user }) {
   // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
   const CSV_ALWAYS_UPDATE = ['stock'];
   const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor'];
-  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '현재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처' };
 
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
@@ -2748,7 +2748,7 @@ export default function App({ user }) {
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">라벨명</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">품번</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">사이즈</th>
-                    <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">현재고</th>
+                    <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">본사재고</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">안전재고</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">최소보유</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">단가</th>
@@ -3525,7 +3525,7 @@ export default function App({ user }) {
                                 <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                                 <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                                <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">현재고</th>
+                                <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
                                 <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                                 <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
@@ -3984,7 +3984,7 @@ export default function App({ user }) {
             </div>
             <div className="grid grid-cols-2 gap-3 pt-1">
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <div className="text-xs text-slate-400 mb-1">현재고</div>
+                <div className="text-xs text-slate-400 mb-1">본사재고</div>
                 <div className={`text-xl font-bold ${calcLabelPopup.stock < 0 ? 'text-red-600' : calcLabelPopup.stock === 0 ? 'text-slate-400' : 'text-blue-600'}`}>{calcLabelPopup.stock?.toLocaleString()}</div>
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">

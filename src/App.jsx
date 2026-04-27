@@ -2191,6 +2191,7 @@ export default function App({ user }) {
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
             { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
             { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
+            { id:'logs', label:'재고로그', icon:<History size={17}/>, color:'text-slate-700', bg:'bg-slate-100' },
             { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
             // 관리자 전용 탭
             ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
@@ -3893,86 +3894,6 @@ export default function App({ user }) {
         </div>
       )}
 
-      {/* [5] 재고 로그 탭 */}
-      {activeTab === 'logs' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-              <History className="text-slate-600" size={20} /> 재고 변동 로그
-              <span className="text-sm font-normal text-slate-400">총 {stockLogs.length}건</span>
-            </h2>
-            <div className="flex items-center gap-2 ml-auto">
-              <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
-                <Search size={14} className="text-slate-400" />
-                <input
-                  type="text" value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(1); }}
-                  placeholder="상품명, 라벨명 검색"
-                  className="text-sm outline-none w-44 text-slate-700 placeholder-slate-400"
-                />
-              </div>
-              {stockLogs.length > 0 && (
-                <button
-                  onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
-                  className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  전체 삭제
-                </button>
-              )}
-            </div>
-          </div>
-
-          {stockLogs.length === 0 ? (
-            <div className="text-center py-16 text-slate-400">
-              <History size={40} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">변경 이력이 없습니다.</p>
-            </div>
-          ) : filteredStockLogs.length === 0 ? (
-            <div className="text-center py-10 text-slate-400">
-              <Search size={32} className="mx-auto mb-2 opacity-30" />
-              <p className="text-sm">검색 결과가 없습니다.</p>
-            </div>
-          ) : (
-            <>
-              {/* 상단 페이지네이션 */}
-              <div className="flex items-center justify-between flex-wrap gap-3 pb-1">
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <span>페이지당</span>
-                  {[30, 50, 100].map(size => (
-                    <button key={size} onClick={() => { setLogPageSize(size); setLogPage(1); }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${logPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                      {size}
-                    </button>
-                  ))}
-                  <span className="ml-2 text-slate-400">{filteredStockLogs.length}건 중 {(logPage-1)*logPageSize+1}–{Math.min(logPage*logPageSize, filteredStockLogs.length)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setLogPage(1)} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
-                  <button onClick={() => setLogPage(p => Math.max(1, p-1))} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
-                  {Array.from({length: logTotalPages}, (_, i) => i+1)
-                    .filter(p => p === 1 || p === logTotalPages || Math.abs(p - logPage) <= 2)
-                    .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, [])
-                    .map((p, idx) => p === '...' ? (
-                      <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
-                    ) : (
-                      <button key={p} onClick={() => setLogPage(p)}
-                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${logPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-                        {p}
-                      </button>
-                    ))}
-                  <button onClick={() => setLogPage(p => Math.min(logTotalPages, p+1))} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
-                  <button onClick={() => setLogPage(logTotalPages)} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
-                </div>
-              </div>
-              {/* 로그 카드 목록 */}
-              <div className="space-y-3">
-                {pagedStockLogs.map((log, i) => renderLogCard(log, (logPage - 1) * logPageSize + i + 1))}
-              </div>
-            </>
-          )}
-
-        </div>
-      )}
-
       {/* 상품 수정 모달 */}
       {editProduct && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditProduct(null)}>
@@ -4154,6 +4075,109 @@ export default function App({ user }) {
       )}
 
       {/* [7] 휴지통 탭 */}
+      {/* [재고로그 탭] 기존 자료실 > 재고로그를 메인 탭으로 분리 */}
+      {activeTab === 'logs' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+          {/* 헤더 */}
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+              <History size={20} className="text-slate-600" /> 재고로그
+              <span className="text-sm font-normal text-slate-400">({stockLogs.length}건)</span>
+            </h2>
+            {stockLogs.length > 0 && (
+              <button onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+                className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors">
+                전체 삭제
+              </button>
+            )}
+          </div>
+
+          {/* 카테고리 필터 칩 (재고로그 카테고리 - 평탄화) */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => { setLogCategoryFilter('all'); setLogPage(1); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${logCategoryFilter === 'all' || logCategoryFilter === null ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+            >
+              <History size={12} /> 전체 보기
+              <span className={`text-xs ${logCategoryFilter === 'all' || logCategoryFilter === null ? 'text-white/70' : 'text-slate-400'}`}>{stockLogs.length}</span>
+            </button>
+            {LOG_CATEGORIES.map(cat => {
+              const count = stockLogs.filter(log => cat.types.includes(log.type)).length;
+              const CatIcon = cat.icon;
+              const isActive = logCategoryFilter === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => { setLogCategoryFilter(cat.id); setLogPage(1); }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${isActive ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                >
+                  <CatIcon size={12} /> {cat.label}
+                  <span className={`text-xs ${isActive ? 'text-white/70' : 'text-slate-400'}`}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 검색 */}
+          <div className="flex items-center gap-1 border border-slate-200 rounded-lg px-2 py-1.5 bg-white max-w-md">
+            <Search size={14} className="text-slate-400" />
+            <input type="text" value={logSearch} onChange={e => { setLogSearch(e.target.value); setLogPage(1); }}
+              placeholder="상품명, 라벨명 검색"
+              className="text-sm outline-none flex-1 text-slate-700 placeholder-slate-400" />
+          </div>
+
+          {/* 로그 목록 + 페이지네이션 */}
+          {stockLogs.length === 0 ? (
+            <div className="text-center py-16 text-slate-400">
+              <History size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">변경 이력이 없습니다.</p>
+            </div>
+          ) : filteredStockLogs.length === 0 ? (
+            <div className="text-center py-10 text-slate-400">
+              <Search size={32} className="mx-auto mb-2 opacity-30" />
+              <p className="text-sm">{logSearch ? '검색 결과가 없습니다.' : '이 카테고리에 로그가 없습니다.'}</p>
+            </div>
+          ) : (
+            <>
+              {/* 페이지네이션 */}
+              <div className="flex items-center justify-between flex-wrap gap-3 pb-1">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <span>페이지당</span>
+                  {[30, 50, 100].map(size => (
+                    <button key={size} onClick={() => { setLogPageSize(size); setLogPage(1); }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${logPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                      {size}
+                    </button>
+                  ))}
+                  <span className="ml-2 text-slate-400">{filteredStockLogs.length}건 중 {(logPage-1)*logPageSize+1}–{Math.min(logPage*logPageSize, filteredStockLogs.length)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setLogPage(1)} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                  <button onClick={() => setLogPage(p => Math.max(1, p-1))} disabled={logPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                  {Array.from({length: logTotalPages}, (_, i) => i+1)
+                    .filter(p => p === 1 || p === logTotalPages || Math.abs(p - logPage) <= 2)
+                    .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, [])
+                    .map((p, idx) => p === '...' ? (
+                      <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
+                    ) : (
+                      <button key={p} onClick={() => setLogPage(p)}
+                        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${logPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                        {p}
+                      </button>
+                    ))}
+                  <button onClick={() => setLogPage(p => Math.min(logTotalPages, p+1))} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                  <button onClick={() => setLogPage(logTotalPages)} disabled={logPage === logTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {pagedStockLogs.map((log, i) => renderLogCard(log, (logPage - 1) * logPageSize + i + 1))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {activeTab === 'trash' && (() => {
         const trashSearch = trashSearchInput;
         const filtered = trash.filter(t => {
@@ -4380,55 +4404,20 @@ export default function App({ user }) {
                 <span className="text-xs text-slate-400">{documents.length}</span>
               </button>
 
-              {/* 라벨이미지 (브랜드별 하위 폴더) */}
+              {/* 라벨이미지 (단일 폴더 - 중첩 제거) */}
               {(() => {
-                const labelImgCount = documents.filter(d => d.category === '라벨이미지').length;
-                const isExpanded = docExpandedFolders.has('라벨이미지');
+                const count = documents.filter(d => d.category === '라벨이미지').length;
                 const isActive = docActiveFolder === '라벨이미지';
                 return (
-                  <>
-                    <div className="flex items-stretch">
-                      <button
-                        onClick={() => toggleDocFolder('라벨이미지')}
-                        className="px-1 text-slate-400 hover:text-slate-600 rounded"
-                        aria-label="펼치기"
-                      >
-                        {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                      </button>
-                      <button
-                        onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter('전체'); setDocSearch(''); setDocPage(1); if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, '라벨이미지'])); }}
-                        className={`flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive && docImageBrandFilter === '전체' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <ImageIcon size={14} /> 라벨이미지
-                        </span>
-                        <span className="text-xs text-slate-400">{labelImgCount}</span>
-                      </button>
-                    </div>
-                    {isExpanded && (
-                      <div className="ml-4 border-l border-slate-200 pl-2 space-y-0.5">
-                        {labelImgBrands.map(brand => {
-                          const count = brand === '전체'
-                            ? labelImgCount
-                            : documents.filter(d => d.category === '라벨이미지' && getDocLabelBrand(d) === brand).length;
-                          if (count === 0 && brand !== '전체') return null;
-                          const isBrandActive = isActive && docImageBrandFilter === brand;
-                          return (
-                            <button
-                              key={brand}
-                              onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter(brand); setDocSearch(''); setDocPage(1); }}
-                              className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isBrandActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <Tag size={11} /> {brand === '전체' ? '모두 보기' : brand}
-                              </span>
-                              <span className="text-xs text-slate-400">{count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
+                  <button
+                    onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter('전체'); setDocSearch(''); setDocPage(1); }}
+                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <ImageIcon size={14} /> 라벨이미지
+                    </span>
+                    <span className="text-xs text-slate-400">{count}</span>
+                  </button>
                 );
               })()}
 
@@ -4439,7 +4428,7 @@ export default function App({ user }) {
                 return (
                   <button
                     onClick={() => { setDocActiveFolder('재고리스트'); setDocSearch(''); setDocPage(1); }}
-                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ml-[18px] ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
                   >
                     <span className="flex items-center gap-2">
                       <FileText size={14} /> 재고리스트
@@ -4448,60 +4437,7 @@ export default function App({ user }) {
                   </button>
                 );
               })()}
-
-              {/* 재고로그 (카테고리별 하위 폴더) */}
-              {(() => {
-                const isExpanded = docExpandedFolders.has('재고로그');
-                const isActive = docActiveFolder === '재고로그';
-                return (
-                  <>
-                    <div className="flex items-stretch">
-                      <button
-                        onClick={() => toggleDocFolder('재고로그')}
-                        className="px-1 text-slate-400 hover:text-slate-600 rounded"
-                        aria-label="펼치기"
-                      >
-                        {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-                      </button>
-                      <button
-                        onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter('all'); setDocSearch(''); setLogPage(1); if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, '재고로그'])); }}
-                        className={`flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive && logCategoryFilter === 'all' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <History size={14} /> 재고로그
-                        </span>
-                        <span className="text-xs text-slate-400">{stockLogs.length}</span>
-                      </button>
-                    </div>
-                    {isExpanded && (
-                      <div className="ml-4 border-l border-slate-200 pl-2 space-y-0.5">
-                        <button
-                          onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter('all'); setLogPage(1); }}
-                          className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isActive && logCategoryFilter === 'all' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
-                        >
-                          <span className="flex items-center gap-1.5"><History size={11} /> 전체 보기</span>
-                          <span className="text-xs text-slate-400">{stockLogs.length}</span>
-                        </button>
-                        {LOG_CATEGORIES.map(cat => {
-                          const count = stockLogs.filter(log => cat.types.includes(log.type)).length;
-                          const isCatActive = isActive && logCategoryFilter === cat.id;
-                          const CatIcon = cat.icon;
-                          return (
-                            <button
-                              key={cat.id}
-                              onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter(cat.id); setLogPage(1); }}
-                              className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isCatActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
-                            >
-                              <span className="flex items-center gap-1.5"><CatIcon size={11} /> {cat.label}</span>
-                              <span className="text-xs text-slate-400">{count}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
+              {/* 재고로그는 메인 사이드바의 별도 탭으로 이동됨 */}
             </nav>
           </aside>
 

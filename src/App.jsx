@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock, RotateCcw } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -861,8 +861,9 @@ export default function App({ user }) {
   };
 
   const deleteLabel = (id) => {
-    if (window.confirm('정말 삭제하시겠습니까?')) {
+    if (window.confirm('이 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
       const label = labels.find(l => l.id === id);
+      if (label) moveToTrash('label', label); // 휴지통 보관
       setLabels(prev => prev.filter(l => l.id !== id));
       if (label) addLog({ type: 'delete', labelId: id, labelName: label.name, labelCode: label.code, labelBrand: label.brand, summary: `라벨 삭제: ${label.name} (${label.code})` });
       setProducts(prev => prev.map(p => ({
@@ -870,7 +871,6 @@ export default function App({ user }) {
         bom: (p.bom || []).filter(b => b.labelId !== id)
       })));
       setSelectedProduct(prev => prev ? { ...prev, bom: (prev.bom || []).filter(b => b.labelId !== id) } : null);
-      // [H4 수정] savedOrders 안의 해당 라벨 참조도 제거 (PDF/재열람 시 undefined 방지)
       setSavedOrders(prev => prev.map(o => ({
         ...o,
         details: (o.details || []).filter(d => d.id !== id)
@@ -935,8 +935,9 @@ export default function App({ user }) {
   };
 
   const deleteProduct = (id) => {
-    if (window.confirm('상품을 삭제하시겠습니까?')) {
+    if (window.confirm('이 상품을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
       const prod = products.find(p => p.id === id);
+      if (prod) moveToTrash('product', prod);
       setProducts(products.filter(p => p.id !== id));
       if (prod) addLog({ type: 'product_delete', productName: prod.name, productBrand: prod.brand, bomCount: prod.bom?.length || 0, summary: `상품 삭제: ${prod.name} (${prod.brand})` });
       if (selectedProduct?.id === id) {
@@ -1293,6 +1294,125 @@ export default function App({ user }) {
     setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), userId: uid, userName, ...entry }, ...prev]);
   };
   const safetyStockPrev = useRef({});
+
+  // --- 휴지통 (소프트 삭제 보관) ---
+  const [trash, setTrash] = useState(() => {
+    const saved = localStorage.getItem('label_trash');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const trashCanSave = useRef(false);
+  const trashLastWriteJson = useRef('');
+  const firestoreTrashLoaded = useRef(false);
+  useEffect(() => {
+    if (firestoreTrashLoaded.current) return;
+    firestoreTrashLoaded.current = true;
+    getDoc(doc(db, 'settings', 'trash')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list)) {
+        const data = snap.data().list;
+        setTrash(data);
+        localStorage.setItem('label_trash', JSON.stringify(data));
+        trashLastWriteJson.current = JSON.stringify(data);
+      } else {
+        const localRaw = localStorage.getItem('label_trash');
+        if (localRaw) {
+          try {
+            const localData = JSON.parse(localRaw);
+            if (Array.isArray(localData) && localData.length > 0) {
+              const clean = JSON.parse(JSON.stringify(localData));
+              trashLastWriteJson.current = JSON.stringify(clean);
+              setDoc(doc(db, 'settings', 'trash'), { list: clean }).catch((e) => console.error('[trash] 초기 저장 실패:', e));
+            }
+          } catch(e) { console.error('[trash] 초기 복구 실패:', e); }
+        }
+      }
+    }).catch((e) => console.error('[trash] 초기 로드 실패:', e)).finally(() => { trashCanSave.current = true; });
+
+    // 실시간 리스너
+    const unsub = onSnapshot(doc(db, 'settings', 'trash'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fsData = snap.data().list;
+      if (!Array.isArray(fsData)) return;
+      const fsJson = JSON.stringify(fsData);
+      if (fsJson === trashLastWriteJson.current) return;
+      // id 기반 병합 (양쪽 합집합)
+      setTrash(prev => {
+        const byId = new Map();
+        [...fsData, ...prev].forEach(t => { if (t && t.id != null) byId.set(t.id, t); });
+        return Array.from(byId.values()).sort((a,b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+      });
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('label_trash', JSON.stringify(trash)); } catch(e) {}
+    if (!trashCanSave.current || transactionInProgress.current) return;
+    try {
+      const clean = JSON.parse(JSON.stringify(trash));
+      trashLastWriteJson.current = JSON.stringify(clean);
+      setDoc(doc(db, 'settings', 'trash'), { list: clean }).catch((e) => console.error('[trash] 저장 실패:', e));
+    } catch(e) { console.error('[trash] 저장 직렬화 실패:', e); }
+  }, [trash]);
+
+  // 휴지통 UI state
+  const [trashSearchInput, setTrashSearchInput] = useState('');
+  const [trashPage, setTrashPage] = useState(1);
+  const [trashPageSize, setTrashPageSize] = useState(30);
+  const [trashSelectedIds, setTrashSelectedIds] = useState(new Set());
+
+  // 휴지통에 항목 추가 (소프트 삭제)
+  const moveToTrash = (type, item) => {
+    const _uid = user?.email ? user.email.split('@')[0] : '';
+    const _name = currentUserName || user?.displayName || '';
+    const trashEntry = {
+      id: uniqueId(),
+      type, // 'product' | 'label' | 'order'
+      itemId: item.id,
+      // 표시용 필드
+      brand: item.brand || item.productBrand || '-',
+      name: item.name || item.productName || '(이름 없음)',
+      code: item.code || '',
+      // 전체 데이터 (복구용)
+      data: JSON.parse(JSON.stringify(item)),
+      deletedAt: new Date().toISOString(),
+      deletedBy: _name || _uid || '알 수 없음',
+      deletedById: _uid,
+    };
+    setTrash(prev => [trashEntry, ...prev]);
+  };
+
+  // 휴지통에서 복구
+  const restoreFromTrash = (trashId) => {
+    const entry = trash.find(t => t.id === trashId);
+    if (!entry) return;
+    if (!window.confirm(`"${entry.name}"을(를) 복구하시겠습니까?`)) return;
+    if (entry.type === 'label') {
+      setLabels(prev => [entry.data, ...prev.filter(l => l.id !== entry.data.id)]);
+      addLog({ type: 'add', labelName: entry.name, labelCode: entry.code, summary: `라벨 복구: ${entry.name} (${entry.code})` });
+    } else if (entry.type === 'product') {
+      setProducts(prev => [entry.data, ...prev.filter(p => p.id !== entry.data.id)]);
+      addLog({ type: 'product_add', productName: entry.name, productBrand: entry.brand, bomCount: entry.data.bom?.length || 0, summary: `상품 복구: ${entry.name} (${entry.brand})` });
+    } else if (entry.type === 'order') {
+      setSavedOrders(prev => [entry.data, ...prev.filter(o => o.id !== entry.data.id)]);
+      addLog({ type: 'order_save', productName: entry.name, summary: `발주 복구: ${entry.name}` });
+    }
+    setTrash(prev => prev.filter(t => t.id !== trashId));
+  };
+
+  // 휴지통에서 영구 삭제 (관리자 전용)
+  const permanentlyDelete = (trashId) => {
+    if (!isAdmin) { alert('완전 삭제는 관리자만 가능합니다.'); return; }
+    const entry = trash.find(t => t.id === trashId);
+    if (!entry) return;
+    if (!window.confirm(`"${entry.name}"을(를) 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`)) return;
+    setTrash(prev => prev.filter(t => t.id !== trashId));
+  };
+
+  // 선택된 항목 일괄 영구 삭제 (관리자 전용)
+  const permanentlyDeleteSelected = (ids) => {
+    if (!isAdmin) { alert('완전 삭제는 관리자만 가능합니다.'); return; }
+    if (!window.confirm(`선택한 ${ids.length}건을 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`)) return;
+    setTrash(prev => prev.filter(t => !ids.includes(t.id)));
+  };
 
   // --- 자료실 ---
   const [documents, setDocuments] = useState(() => {
@@ -2057,6 +2177,7 @@ export default function App({ user }) {
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
             { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
             { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
+            { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
             // 관리자 전용 탭
             ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
           ].map(item => (
@@ -3472,7 +3593,13 @@ export default function App({ user }) {
                                 <button onClick={() => { setViewOrder(order); setViewOrderEditMode(true); setViewOrderEdits({ orderer: order.orderer || '', factory: order.factory || '', note: order.note || '', mfgDate: order.mfgDate || '', rnNumber: order.rnNumber || '', details: (order.details || []).map(d => ({ ...d })), _idx: idx }); setOpenOrderMenuId(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2 text-slate-700">
                                   <Pencil size={14} /> 수정
                                 </button>
-                                <button onClick={() => { setOpenOrderMenuId(null); addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` }); setSavedOrders(prev => prev.filter(o => o.id !== order.id)); }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
+                                <button onClick={() => {
+                                  setOpenOrderMenuId(null);
+                                  if (!window.confirm('이 발주를 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) return;
+                                  moveToTrash('order', order);
+                                  addLog({ type: 'order_delete', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 삭제: ${order.productName || '(미선택)'}` });
+                                  setSavedOrders(prev => prev.filter(o => o.id !== order.id));
+                                }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
                                   <Trash2 size={14} /> 삭제
                                 </button>
                               </div>
@@ -4001,7 +4128,184 @@ export default function App({ user }) {
         </div>
       )}
 
-      {/* [7] 계정 관리 탭 (관리자 전용) */}
+      {/* [7] 휴지통 탭 */}
+      {activeTab === 'trash' && (() => {
+        const trashSearch = trashSearchInput;
+        const filtered = trash.filter(t => {
+          if (!trashSearch.trim()) return true;
+          const q = trashSearch.toLowerCase();
+          return (t.name || '').toLowerCase().includes(q) ||
+            (t.brand || '').toLowerCase().includes(q) ||
+            (t.code || '').toLowerCase().includes(q) ||
+            String(t.itemId || '').includes(q) ||
+            (t.deletedBy || '').toLowerCase().includes(q);
+        }).sort((a,b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / trashPageSize));
+        const paged = filtered.slice((trashPage - 1) * trashPageSize, trashPage * trashPageSize);
+        const now = Date.now();
+        const ELAPSE_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000; // 30일
+
+        return (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-4">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Trash2 size={22} className="text-slate-600" /> 휴지통 <span className="text-sm font-normal text-slate-400">({trash.length}건)</span>
+              </h2>
+              {trashSelectedIds.size > 0 && isAdmin && (
+                <button
+                  onClick={() => { permanentlyDeleteSelected(Array.from(trashSelectedIds)); setTrashSelectedIds(new Set()); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  <Trash2 size={14} /> 선택 {trashSelectedIds.size}건 완전삭제
+                </button>
+              )}
+            </div>
+
+            {/* 검색 */}
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text" value={trashSearchInput}
+                onChange={e => { setTrashSearchInput(e.target.value); setTrashPage(1); }}
+                placeholder="품명·브랜드·번호·삭제자 검색..."
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            {/* 테이블 */}
+            {filtered.length === 0 ? (
+              <div className="text-center py-16 text-slate-400">
+                <Trash2 size={40} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">{trashSearchInput ? '검색 결과가 없습니다.' : '휴지통이 비어있습니다.'}</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
+                      <tr>
+                        <th className="p-3 w-10 text-center">
+                          {isAdmin && (
+                            <input type="checkbox"
+                              checked={paged.length > 0 && paged.every(t => trashSelectedIds.has(t.id))}
+                              onChange={e => {
+                                setTrashSelectedIds(prev => {
+                                  const n = new Set(prev);
+                                  if (e.target.checked) paged.forEach(t => n.add(t.id));
+                                  else paged.forEach(t => n.delete(t.id));
+                                  return n;
+                                });
+                              }}
+                              className="cursor-pointer w-4 h-4"
+                            />
+                          )}
+                        </th>
+                        <th className="p-3 text-left font-medium w-20">No.</th>
+                        <th className="p-3 text-left font-medium w-20">브랜드</th>
+                        <th className="p-3 text-left font-medium">품명</th>
+                        <th className="p-3 text-left font-medium w-32">삭제일</th>
+                        <th className="p-3 text-left font-medium w-24">삭제자</th>
+                        <th className="p-3 text-center font-medium w-32">관리</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paged.map((t, idx) => {
+                        const elapsedMs = now - new Date(t.deletedAt).getTime();
+                        const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+                        const showElapsed = elapsedMs >= ELAPSE_THRESHOLD_MS;
+                        const dateStr = new Date(t.deletedAt).toLocaleDateString('ko-KR').replace(/\./g, '.').replace(/\s+/g, '');
+                        const typeLabel = t.type === 'product' ? '상품' : t.type === 'label' ? '라벨' : t.type === 'order' ? '발주' : t.type;
+                        return (
+                          <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${trashSelectedIds.has(t.id) ? 'bg-slate-100' : ''}`}>
+                            <td className="p-3 text-center">
+                              {isAdmin && (
+                                <input type="checkbox" checked={trashSelectedIds.has(t.id)}
+                                  onChange={e => setTrashSelectedIds(prev => { const n = new Set(prev); e.target.checked ? n.add(t.id) : n.delete(t.id); return n; })}
+                                  className="cursor-pointer w-4 h-4"
+                                />
+                              )}
+                            </td>
+                            <td className="p-3 text-slate-500 text-xs">{(trashPage-1)*trashPageSize + idx + 1}</td>
+                            <td className="p-3">
+                              <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">{t.brand || '-'}</span>
+                              <span className="text-xs text-slate-400 ml-1">{typeLabel}</span>
+                            </td>
+                            <td className="p-3 font-medium text-slate-800">{t.name} {t.code && <span className="text-xs text-slate-400 font-normal ml-1">{t.code}</span>}</td>
+                            <td className="p-3 text-slate-500 text-xs whitespace-nowrap">
+                              {dateStr}
+                              {showElapsed && (
+                                <span className="ml-1.5 inline-block text-xs font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">
+                                  {elapsedDays}일 경과
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-slate-600 text-xs">{t.deletedBy || '-'}</td>
+                            <td className="p-3 text-center">
+                              <div className="flex justify-center gap-1">
+                                <button onClick={() => restoreFromTrash(t.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg font-medium transition-colors">
+                                  <RotateCcw size={12} /> 복구
+                                </button>
+                                {isAdmin && (
+                                  <button onClick={() => permanentlyDelete(t.id)}
+                                    className="flex items-center gap-1 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg font-medium transition-colors"
+                                    title="완전 삭제 (복구 불가)">
+                                    <Trash2 size={12} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 페이지네이션 */}
+                <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <span>페이지당</span>
+                    {[30, 50, 100].map(size => (
+                      <button key={size} onClick={() => { setTrashPageSize(size); setTrashPage(1); }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${trashPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                        {size}
+                      </button>
+                    ))}
+                    <span className="ml-2 text-slate-400">{filtered.length}개 중 {(trashPage-1)*trashPageSize+1}–{Math.min(trashPage*trashPageSize, filtered.length)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setTrashPage(1)} disabled={trashPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                    <button onClick={() => setTrashPage(p => Math.max(1, p-1))} disabled={trashPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                    {Array.from({length: totalPages}, (_, i) => i+1)
+                      .filter(p => p === 1 || p === totalPages || Math.abs(p - trashPage) <= 2)
+                      .reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, [])
+                      .map((p, idx) => p === '...' ? (
+                        <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span>
+                      ) : (
+                        <button key={p} onClick={() => setTrashPage(p)}
+                          className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${trashPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+                          {p}
+                        </button>
+                      ))}
+                    <button onClick={() => setTrashPage(p => Math.min(totalPages, p+1))} disabled={trashPage === totalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                    <button onClick={() => setTrashPage(totalPages)} disabled={trashPage === totalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
+                  </div>
+                </div>
+
+                {/* 안내 */}
+                <p className="text-xs text-slate-400 pt-2">
+                  💡 휴지통의 항목은 [복구] 버튼으로 다시 살릴 수 있습니다. 30일이 지난 항목은 경과일이 표시됩니다.
+                  {!isAdmin && ' 완전 삭제는 관리자만 가능합니다.'}
+                </p>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* [8] 계정 관리 탭 (관리자 전용) */}
       {activeTab === 'admin' && isAdmin && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
           <div className="flex items-center gap-2 mb-5">

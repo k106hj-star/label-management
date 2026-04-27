@@ -1370,7 +1370,6 @@ export default function App({ user }) {
     { id: '라벨이미지', label: '라벨이미지', icon: ImageIcon, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
     { id: '재고리스트', label: '재고리스트', icon: FileText,  color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
     { id: '재고로그',   label: '재고로그',   icon: History,   color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600' },
-    ...(isAdmin ? [{ id: '계정관리', label: '계정 관리', icon: Users, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200', activeBg: 'bg-slate-600', adminOnly: true }] : []),
   ];
 
   const getFileIcon = (ext) => {
@@ -2051,6 +2050,8 @@ export default function App({ user }) {
             { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
             { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
             { id:'docs', label:'자료실', icon:<FolderOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge:documents.filter(d => Date.now() - new Date(d.uploadedAt).getTime() < 3600000).length },
+            // 관리자 전용 탭
+            ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
           ].map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               className={`relative w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === item.id ? `${item.bg} ${item.color}` : 'text-slate-600 hover:bg-slate-100'}`}>
@@ -3993,6 +3994,25 @@ export default function App({ user }) {
         </div>
       )}
 
+      {/* [7] 계정 관리 탭 (관리자 전용) */}
+      {activeTab === 'admin' && isAdmin && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+          <div className="flex items-center gap-2 mb-5">
+            <Users size={22} className="text-violet-600" />
+            <h2 className="text-lg font-bold text-slate-800">계정 관리</h2>
+            <span className="text-xs text-slate-400 ml-1">관리자 전용</span>
+          </div>
+          <AdminPage currentUser={user} />
+        </div>
+      )}
+      {activeTab === 'admin' && !isAdmin && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-12 text-center">
+          <AlertCircle size={36} className="mx-auto text-slate-400 mb-3" />
+          <p className="text-sm text-slate-600 font-medium">관리자 권한이 필요합니다</p>
+          <p className="text-xs text-slate-400 mt-1">이 페이지는 관리자만 접근할 수 있습니다.</p>
+        </div>
+      )}
+
       {/* [6] 자료실 탭 */}
       {activeTab === 'docs' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
@@ -4047,9 +4067,6 @@ export default function App({ user }) {
               })}
             </div>
             </>
-          ) : docActiveFolder === '계정관리' ? (
-            /* 계정관리 폴더 = 관리자 전용 사용자 관리 */
-            <AdminPage currentUser={user} />
           ) : docActiveFolder === '재고로그' ? (
             /* 재고로그 폴더 = 카테고리 폴더 그리드 또는 필터링된 로그 뷰 */
             logCategoryFilter === null ? (

@@ -1937,7 +1937,7 @@ export default function App({ user }) {
     bom_add:          { ...LOG_CARD_STYLE, label: '🔗 BOM 라벨 추가' },
     bom_remove:       { ...LOG_CARD_STYLE, label: '✂️ BOM 라벨 제거' },
   };
-  const renderLogCard = (log) => {
+  const renderLogCard = (log, no) => {
     const c = logTypeConfig[log.type] || { border: 'border-slate-200', bg: 'bg-slate-50/40', badge: 'bg-slate-100 text-slate-700', label: log.type };
     const isOpen = expandedLogs.has(log.id);
     // 상세 내용이 있는 타입인지 판단
@@ -1965,6 +1965,7 @@ export default function App({ user }) {
           onClick={() => hasDetail && toggleLog(log.id)}
         >
           <div className="flex items-center gap-2 flex-wrap">
+            {no != null && <span className="text-xs text-slate-400 font-medium w-8 text-right shrink-0">{no}</span>}
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.badge}`}>{c.label}</span>
             <span className="text-sm font-semibold text-slate-700">{log.summary || log.productName || log.labelName}</span>
             {log.factory && log.factory !== '-' && <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{log.factory}</span>}
@@ -2617,6 +2618,7 @@ export default function App({ user }) {
                         className="cursor-pointer w-4 h-4 accent-blue-600"
                       />
                     </th>
+                    <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10 text-center w-12">No.</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">이미지</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">브랜드</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">종류</th>
@@ -2640,6 +2642,7 @@ export default function App({ user }) {
                           className="cursor-pointer w-4 h-4 accent-blue-600"
                         />
                       </td>
+                      <td className="p-3 text-center text-xs text-slate-400">{(labelPage - 1) * labelPageSize + lIdx + 1}</td>
                       <td className="p-3">
                         <div className="relative group">
                           <label className="cursor-pointer block">
@@ -2899,8 +2902,9 @@ export default function App({ user }) {
                   const q = productSearch.toLowerCase();
                   return p.name.toLowerCase().includes(q) || (p.brand || '').toLowerCase().includes(q);
                 };
-                const renderProductItem = (p) => (
+                const renderProductItem = (p, idx) => (
                   <div key={p.id} className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${selectedProduct?.id === p.id ? 'border-slate-500 bg-slate-100' : 'border-slate-200 hover:border-slate-400'}`}>
+                    {idx != null && <span className="text-xs text-slate-400 w-6 text-right shrink-0">{idx + 1}</span>}
                     <button onClick={() => { setSelectedProduct(p); setBomBrandFilter('auto'); }} className={`flex-1 text-left text-sm ${selectedProduct?.id === p.id ? 'text-slate-800 font-medium' : 'text-slate-600'}`}>
                       <span className="inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 bg-slate-100 text-slate-700">{p.brand || '공용'}</span>
                       {p.name}
@@ -2932,7 +2936,7 @@ export default function App({ user }) {
                   return (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-400">검색 결과 {hits.length}개</p>
-                      {hits.map(renderProductItem)}
+                      {hits.map((p, i) => renderProductItem(p, i))}
                       {hits.length === 0 && <p className="text-sm text-slate-400 text-center py-6">검색 결과가 없습니다.</p>}
                     </div>
                   );
@@ -2950,7 +2954,7 @@ export default function App({ user }) {
                           <p className="text-xs font-semibold text-slate-600 flex items-center gap-1">
                             <Plus size={12} /> 새로 등록한 상품 <span className="text-slate-400 font-normal">({newProducts.length}개 · 1분간 표시)</span>
                           </p>
-                          {newProducts.map(renderProductItem)}
+                          {newProducts.map((p, i) => renderProductItem(p, i))}
                         </div>
                       )}
                       {/* 브랜드 폴더 그리드 */}
@@ -2981,7 +2985,7 @@ export default function App({ user }) {
                     {folderProducts.length === 0 ? (
                       <p className="text-sm text-slate-400 text-center py-6">이 브랜드에 등록된 상품이 없습니다.</p>
                     ) : (
-                      folderProducts.map(renderProductItem)
+                      folderProducts.map((p, i) => renderProductItem(p, i))
                     )}
                   </div>
                 );
@@ -3551,6 +3555,7 @@ export default function App({ user }) {
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="p-3 font-semibold text-slate-600 text-center w-12">No.</th>
                     <th className="p-3 font-semibold text-slate-600">저장일시</th>
                     <th className="p-3 font-semibold text-slate-600">상품명</th>
                     <th className="p-3 font-semibold text-slate-600">공장</th>
@@ -3566,6 +3571,7 @@ export default function App({ user }) {
                   {savedOrders.map((order, idx) => (
                     <React.Fragment key={order.id}>
                       <tr className={`hover:bg-slate-50 ${order.applied ? 'bg-green-50/40' : ''}`}>
+                        <td className="p-3 text-center text-xs text-slate-400">{idx + 1}</td>
                         <td className="p-3 text-slate-400 text-xs whitespace-nowrap">{order.date}</td>
                         <td className="p-3 font-medium text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline transition-colors" onClick={() => setViewOrder(order)}>{order.productName || '(미선택)'}</td>
                         <td className="p-3 text-slate-600">{order.factory || '-'}</td>
@@ -3946,7 +3952,7 @@ export default function App({ user }) {
               </div>
               {/* 로그 카드 목록 */}
               <div className="space-y-3">
-                {pagedStockLogs.map(log => renderLogCard(log))}
+                {pagedStockLogs.map((log, i) => renderLogCard(log, (logPage - 1) * logPageSize + i + 1))}
               </div>
             </>
           )}
@@ -4522,10 +4528,12 @@ export default function App({ user }) {
               ) : (
                 <>
                   <div className="divide-y divide-slate-100">
-                    {pagedDocs.map(d => {
+                    {pagedDocs.map((d, idx) => {
                       const isImage = ['jpg','jpeg','png','gif','webp','bmp','svg'].includes((d.ext || '').toLowerCase());
+                      const no = (docPage - 1) * docPageSize + idx + 1;
                       return (
                         <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                          <span className="text-xs text-slate-400 w-8 text-right shrink-0">{no}</span>
                           {isImage && d.url ? (
                             <button onClick={() => setPreviewImg(d.url)} className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center flex-shrink-0 transition-colors cursor-zoom-in" title="클릭하여 미리보기">
                               {getFileIcon(d.ext)}
@@ -4654,7 +4662,7 @@ export default function App({ user }) {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {filteredStockLogs.map(log => renderLogCard(log))}
+                    {filteredStockLogs.map((log, i) => renderLogCard(log, i + 1))}
                   </div>
                 )}
               </>
@@ -4698,10 +4706,12 @@ export default function App({ user }) {
               ) : (
                 <>
                   <div className="divide-y divide-slate-100">
-                    {pagedDocs.map(d => {
+                    {pagedDocs.map((d, idx) => {
                       const isImage = ['jpg','jpeg','png','gif','webp','bmp','svg'].includes((d.ext || '').toLowerCase());
+                      const no = (docPage - 1) * docPageSize + idx + 1;
                       return (
                         <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                          <span className="text-xs text-slate-400 w-8 text-right shrink-0">{no}</span>
                           {isImage && d.url ? (
                             <button
                               onClick={() => setPreviewImg(d.url)}

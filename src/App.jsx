@@ -122,7 +122,7 @@ function parseCSV(csvText) {
   const iSize   = col(['사이즈']);
   const iStock  = col(['본사재고', '재고수량', '현재고']);
   const iSafety   = col(['안전재고']);
-  const iReserve  = col(['최소보유수량']);
+  const iReserve  = col(['발주수량', '최소보유수량']);
   const iPrice    = col(['단가']);
   const iVendor   = col(['공급처']);
   const iDelivery = col(['입고처', '납품유형', '납품 유형', '납품']);
@@ -574,7 +574,7 @@ export default function App({ user }) {
   const saveEdit = () => {
     if (!editLabel.name || !editLabel.code) return alert('라벨명과 품번은 필수입니다.');
     const original = labels.find(l => l.id === editLabel.id);
-    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
+    const fieldLabels = { brand: '브랜드', type: '종류', name: '라벨명', code: '품번', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '발주수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
     const changes = Object.keys(fieldLabels).filter(k => original && String(original[k] ?? '') !== String(editLabel[k] ?? '')).map(k => ({ field: fieldLabels[k], before: original[k], after: editLabel[k] }));
     setLabels(prev => prev.map(l => l.id === editLabel.id ? { ...editLabel } : l));
     if (changes.length > 0) addLog({ type: 'edit', labelId: editLabel.id, labelName: editLabel.name, labelCode: editLabel.code, changes, summary: `라벨 수정: ${editLabel.name} (${editLabel.code})` });
@@ -748,7 +748,7 @@ export default function App({ user }) {
       const s = String(v ?? '');
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,최소보유수량,단가,공급처,입고처';
+    const header = '브랜드,종류,라벨명,품번,사이즈,본사재고,안전재고,발주수량,단가,공급처,입고처';
     const rows = labels.map(l => [
       l.brand, l.type, l.name, l.code, l.size,
       l.stock ?? 0, l.safetyStock ?? 0, l.reserveStock ?? 0, l.price ?? 0, l.vendor ?? '',
@@ -767,7 +767,7 @@ export default function App({ user }) {
   // 현재고는 항상 덮어쓰기, 나머지는 비어있을 때만 채우기
   const CSV_ALWAYS_UPDATE = ['stock'];
   const CSV_FILL_EMPTY = ['brand', 'type', 'size', 'price', 'vendor', 'deliveryType'];
-  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '최소보유수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
+  const CSV_FIELD_LABEL = { brand: '브랜드', type: '종류', size: '사이즈', stock: '본사재고', safetyStock: '안전재고', reserveStock: '발주수량', price: '단가', vendor: '공급처', deliveryType: '입고처' };
 
   const handleCSVUpload = (e) => {
     const file = e.target.files[0];
@@ -1750,7 +1750,8 @@ export default function App({ user }) {
       // 사이즈 전용 라벨은 해당 사이즈 합계만 사용, 그 외는 총합
       const effectiveQty = isSizeSpecific ? sizeQtyMap[label.size] : totalQty;
       const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * effectiveQty;
-      const availableStock = Math.max(0, Number(label.stock ?? 0) - Number(label.reserveStock ?? 0));
+      // 발주수량(reserveStock)은 정보성 필드로 발주 계산에서 제외
+      const availableStock = Math.max(0, Number(label.stock ?? 0));
       const shortage = Math.max(0, totalNeed - availableStock);
       const cost = shortage * label.price;
       totalCost += cost;
@@ -2897,7 +2898,7 @@ export default function App({ user }) {
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">사이즈</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-amber-50 z-10 text-amber-600">본사재고</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">안전재고</th>
-                    <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">최소보유</th>
+                    <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">발주수량</th>
                     <th className="p-3 font-medium text-right sticky top-0 bg-slate-50 z-10">단가</th>
                     <th className="p-3 font-medium sticky top-0 bg-slate-50 z-10">공급처</th>
                     <th className="p-3 font-medium text-center sticky top-0 bg-slate-50 z-10">입고처</th>
@@ -3128,7 +3129,7 @@ export default function App({ user }) {
                       <input type="number" value={newLabel.stock} onChange={e => setNewLabel({ ...newLabel, stock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-slate-300 rounded text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-500 mb-1">최소보유수량 <span className="text-amber-500">(발주 계산 제외)</span></label>
+                      <label className="block text-xs text-slate-500 mb-1">발주수량 <span className="text-slate-400">(현재 발주 진행 중)</span></label>
                       <input type="number" value={newLabel.reserveStock ?? 0} onChange={e => setNewLabel({ ...newLabel, reserveStock: parseInt(e.target.value) || 0 })} className="w-full p-2 border border-amber-300 rounded text-sm" placeholder="예: 100" />
                     </div>
                     <div>
@@ -3743,7 +3744,7 @@ export default function App({ user }) {
                                     <div>
                                       <div>{(item.stock ?? 0).toLocaleString()}</div>
                                       {(item.reserveStock ?? 0) > 0 && (
-                                        <div className="text-xs text-amber-600 whitespace-nowrap">유보 {item.reserveStock.toLocaleString()}</div>
+                                        <div className="text-xs text-slate-400 whitespace-nowrap">발주중 {item.reserveStock.toLocaleString()}</div>
                                       )}
                                     </div>
                                   </td>

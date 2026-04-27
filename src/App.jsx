@@ -2875,26 +2875,8 @@ export default function App({ user }) {
                       </td>
                       <td className="p-3 text-right">{l.price > 0 ? `${l.price.toLocaleString()}원` : '-'}</td>
                       <td className="p-3 text-sm">{l.vendor || '-'}</td>
-                      <td className="p-3 text-center">
-                        {(() => {
-                          const dt = l.deliveryType || '본사납품';
-                          const isFactory = dt === '공장납품';
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newDt = isFactory ? '본사납품' : '공장납품';
-                                const before = dt;
-                                setLabels(prev => prev.map(lb => lb.id === l.id ? { ...lb, deliveryType: newDt } : lb));
-                                addLog({ type: 'edit', labelId: l.id, labelName: l.name, labelCode: l.code, changes: [{ field: '입고처', before, after: newDt }], summary: `입고처 변경: ${l.name} (${l.code}) ${before}→${newDt}` });
-                              }}
-                              title={isFactory ? '공장 입고 (본사재고 차감 안 함) - 클릭하여 본사로 변경' : '본사 입고 (본사재고 차감) - 클릭하여 공장으로 변경'}
-                              className={`text-xs font-bold px-2 py-1 rounded border transition-colors ${isFactory ? 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'}`}
-                            >
-                              {isFactory ? '🏭 공장' : '🏢 본사'}
-                            </button>
-                          );
-                        })()}
+                      <td className="p-3 text-center text-sm text-slate-700">
+                        {(l.deliveryType || '본사납품') === '공장납품' ? '공장' : '본사'}
                       </td>
                       <td className="p-3 text-center relative">
                         <div className="flex items-center justify-center gap-1">

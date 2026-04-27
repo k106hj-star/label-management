@@ -3174,22 +3174,28 @@ export default function App({ user }) {
                       placeholder="상품명 검색..."
                       className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
-                    {calcSearchOpen && (
-                      <ul className="absolute z-50 w-full mt-1 bg-white border border-emerald-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
-                        {products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).length === 0
-                          ? <li className="px-3 py-2 text-sm text-slate-400">검색 결과 없음</li>
-                          : products.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase())).map(p => (
+                    {calcSearchOpen && (() => {
+                      // 상품 세팅에 BOM이 등록된 상품만 표시 (BOM 미설정 상품은 제외)
+                      const configuredProducts = products.filter(p => Array.isArray(p.bom) && p.bom.length > 0);
+                      const matched = configuredProducts.filter(p => `[${p.brand}] ${p.name}`.toLowerCase().includes(calcSearchText.toLowerCase()));
+                      return (
+                        <ul className="absolute z-50 w-full mt-1 bg-white border border-emerald-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                          {matched.length === 0 ? (
+                            <li className="px-3 py-2 text-sm text-slate-400">
+                              {configuredProducts.length === 0 ? '상품 세팅에 등록된 상품이 없습니다.' : '검색 결과 없음'}
+                            </li>
+                          ) : matched.map(p => (
                             <li
                               key={p.id}
                               onMouseDown={() => { setCalcTarget(String(p.id)); setCalcSearchText(`[${p.brand}] ${p.name}`); setCalcSearchOpen(false); setCalcResult(null); setCalcMfgDate(`${new Date().getFullYear()}.`); setCalcRnNumber(''); }}
                               className={`px-3 py-2 text-sm cursor-pointer hover:bg-emerald-50 ${String(p.id) === calcTarget ? 'bg-emerald-100 font-medium' : ''}`}
                             >
-                              [{p.brand}] {p.name}
+                              [{p.brand}] {p.name} <span className="text-xs text-slate-400">· BOM {p.bom.length}종</span>
                             </li>
-                          ))
-                        }
-                      </ul>
-                    )}
+                          ))}
+                        </ul>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -1355,6 +1355,13 @@ export default function App({ user }) {
   const [docUploading, setDocUploading] = useState(false);
   // 재고로그 카테고리 폴더 필터 (null = 카테고리 폴더 그리드 표시, 아닌 경우 해당 카테고리 로그만 표시)
   const [logCategoryFilter, setLogCategoryFilter] = useState(null);
+  // [트리 뷰] 펼쳐진 폴더 (라벨이미지/재고로그 기본 펼침)
+  const [docExpandedFolders, setDocExpandedFolders] = useState(new Set(['라벨이미지', '재고로그']));
+  const toggleDocFolder = (id) => setDocExpandedFolders(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
 
   // 재고로그 카테고리 정의 (로그 type들을 폴더로 분류) - 모두 회색 톤으로 통일
   const LOG_CATEGORIES = [
@@ -4015,15 +4022,156 @@ export default function App({ user }) {
 
       {/* [6] 자료실 탭 */}
       {activeTab === 'docs' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
+        <div className="flex gap-4 items-start">
+          {/* 좌측 폴더 트리 */}
+          <aside className="w-60 shrink-0 bg-white rounded-xl shadow-sm border border-slate-100 p-3 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
+            <div className="px-2 py-2 border-b border-slate-100 mb-2">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <FolderOpen size={16} className="text-slate-600" /> 자료실
+              </h3>
+            </div>
+            <nav className="space-y-0.5 text-sm">
+              {/* 전체 자료 */}
+              <button
+                onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); setLogCategoryFilter(null); setDocPage(1); }}
+                className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${!docActiveFolder ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+              >
+                <span className="flex items-center gap-2">
+                  <FolderOpen size={14} /> 전체 자료
+                </span>
+                <span className="text-xs text-slate-400">{documents.length}</span>
+              </button>
+
+              {/* 라벨이미지 (브랜드별 하위 폴더) */}
+              {(() => {
+                const labelImgCount = documents.filter(d => d.category === '라벨이미지').length;
+                const isExpanded = docExpandedFolders.has('라벨이미지');
+                const isActive = docActiveFolder === '라벨이미지';
+                return (
+                  <>
+                    <div className="flex items-stretch">
+                      <button
+                        onClick={() => toggleDocFolder('라벨이미지')}
+                        className="px-1 text-slate-400 hover:text-slate-600 rounded"
+                        aria-label="펼치기"
+                      >
+                        {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                      </button>
+                      <button
+                        onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter('전체'); setDocSearch(''); setDocPage(1); if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, '라벨이미지'])); }}
+                        className={`flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive && docImageBrandFilter === '전체' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <ImageIcon size={14} /> 라벨이미지
+                        </span>
+                        <span className="text-xs text-slate-400">{labelImgCount}</span>
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="ml-4 border-l border-slate-200 pl-2 space-y-0.5">
+                        {labelImgBrands.map(brand => {
+                          const count = brand === '전체'
+                            ? labelImgCount
+                            : documents.filter(d => d.category === '라벨이미지' && getDocLabelBrand(d) === brand).length;
+                          if (count === 0 && brand !== '전체') return null;
+                          const isBrandActive = isActive && docImageBrandFilter === brand;
+                          return (
+                            <button
+                              key={brand}
+                              onClick={() => { setDocActiveFolder('라벨이미지'); setDocImageBrandFilter(brand); setDocSearch(''); setDocPage(1); }}
+                              className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isBrandActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <Tag size={11} /> {brand === '전체' ? '모두 보기' : brand}
+                              </span>
+                              <span className="text-xs text-slate-400">{count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+              {/* 재고리스트 */}
+              {(() => {
+                const count = documents.filter(d => d.category === '재고리스트').length;
+                const isActive = docActiveFolder === '재고리스트';
+                return (
+                  <button
+                    onClick={() => { setDocActiveFolder('재고리스트'); setDocSearch(''); setDocPage(1); }}
+                    className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ml-[18px] ${isActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <FileText size={14} /> 재고리스트
+                    </span>
+                    <span className="text-xs text-slate-400">{count}</span>
+                  </button>
+                );
+              })()}
+
+              {/* 재고로그 (카테고리별 하위 폴더) */}
+              {(() => {
+                const isExpanded = docExpandedFolders.has('재고로그');
+                const isActive = docActiveFolder === '재고로그';
+                return (
+                  <>
+                    <div className="flex items-stretch">
+                      <button
+                        onClick={() => toggleDocFolder('재고로그')}
+                        className="px-1 text-slate-400 hover:text-slate-600 rounded"
+                        aria-label="펼치기"
+                      >
+                        {isExpanded ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                      </button>
+                      <button
+                        onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter('all'); setDocSearch(''); setLogPage(1); if (!isExpanded) setDocExpandedFolders(prev => new Set([...prev, '재고로그'])); }}
+                        className={`flex-1 flex items-center justify-between gap-2 px-2 py-1.5 rounded transition-colors ${isActive && logCategoryFilter === 'all' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <History size={14} /> 재고로그
+                        </span>
+                        <span className="text-xs text-slate-400">{stockLogs.length}</span>
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="ml-4 border-l border-slate-200 pl-2 space-y-0.5">
+                        <button
+                          onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter('all'); setLogPage(1); }}
+                          className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isActive && logCategoryFilter === 'all' ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                          <span className="flex items-center gap-1.5"><History size={11} /> 전체 보기</span>
+                          <span className="text-xs text-slate-400">{stockLogs.length}</span>
+                        </button>
+                        {LOG_CATEGORIES.map(cat => {
+                          const count = stockLogs.filter(log => cat.types.includes(log.type)).length;
+                          const isCatActive = isActive && logCategoryFilter === cat.id;
+                          const CatIcon = cat.icon;
+                          return (
+                            <button
+                              key={cat.id}
+                              onClick={() => { setDocActiveFolder('재고로그'); setLogCategoryFilter(cat.id); setLogPage(1); }}
+                              className={`w-full flex items-center justify-between gap-2 px-2 py-1 rounded transition-colors text-xs ${isCatActive ? 'bg-slate-100 text-slate-800 font-semibold' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                              <span className="flex items-center gap-1.5"><CatIcon size={11} /> {cat.label}</span>
+                              <span className="text-xs text-slate-400">{count}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </nav>
+          </aside>
+
+          {/* 우측 콘텐츠 영역 */}
+          <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-slate-100 p-6 space-y-5">
           {/* 헤더 */}
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-              {docActiveFolder ? (
-                <button onClick={() => { setDocActiveFolder(null); setDocSearch(''); setDocImageBrandFilter('전체'); setLogCategoryFilter(null); setDocPage(1); }} className="flex items-center gap-1 text-slate-400 hover:text-slate-600 transition-colors mr-1">
-                  <ChevronLeft size={18} />
-                </button>
-              ) : null}
               <FolderOpen size={20} className="text-slate-600" />
               {docActiveFolder ? (
                 <>
@@ -4033,10 +4181,10 @@ export default function App({ user }) {
                   <span className="text-sm font-normal text-slate-400">({filteredDocs.length}개)</span>
                 </>
               ) : (
-                <>자료실 <span className="text-sm font-normal text-slate-400">({documents.length}개)</span></>
+                <>전체 자료 <span className="text-sm font-normal text-slate-400">({documents.length}개)</span></>
               )}
             </h2>
-            {docActiveFolder && (
+            {docActiveFolder && docActiveFolder !== '재고로그' && (
               <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${docUploading ? 'bg-slate-200 text-slate-400' : 'bg-slate-700 text-white hover:bg-slate-800'}`}>
                 <FilePlus size={16} />
                 {docUploading ? '업로드 중...' : '파일 추가'}
@@ -4045,27 +4193,76 @@ export default function App({ user }) {
             )}
           </div>
 
-          {/* 폴더 목록 화면 */}
+          {/* 콘텐츠: 전체 자료(미선택) → 모든 파일 / 폴더별 보기 */}
           {!docActiveFolder ? (
             <>
-            <div className="grid grid-cols-3 gap-4">
-              {DOC_FOLDERS.map(folder => {
-                const count = documents.filter(d => d.category === folder.id).length;
-                const FolderIcon = folder.icon;
-                return (
-                  <button key={folder.id} onClick={() => { setDocActiveFolder(folder.id); setDocSearch(''); setLogCategoryFilter(null); setDocPage(1); }}
-                    className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 ${folder.border} ${folder.bg} hover:shadow-md transition-all group`}>
-                    <div className={`w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                      <FolderIcon size={28} className={folder.color} />
+              {/* 전체 자료: 검색 + 모든 파일 목록 */}
+              <div className="flex items-center gap-2">
+                <Search size={15} className="text-slate-400" />
+                <input
+                  type="text" placeholder="파일명 검색" value={docSearch} onChange={e => { setDocSearch(e.target.value); setDocPage(1); }}
+                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm w-56 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                />
+              </div>
+              {filteredDocs.length === 0 ? (
+                <div className="text-center py-16 text-slate-400">
+                  <FolderOpen size={40} className="mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">{docSearch ? '검색 결과가 없습니다.' : '파일이 없습니다. 좌측에서 폴더를 선택하세요.'}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="divide-y divide-slate-100">
+                    {pagedDocs.map(d => {
+                      const isImage = ['jpg','jpeg','png','gif','webp','bmp','svg'].includes((d.ext || '').toLowerCase());
+                      return (
+                        <div key={d.id} className="flex items-center gap-3 py-3 hover:bg-slate-50 rounded-lg px-2 transition-colors group">
+                          {isImage && d.url ? (
+                            <button onClick={() => setPreviewImg(d.url)} className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center flex-shrink-0 transition-colors cursor-zoom-in" title="클릭하여 미리보기">
+                              {getFileIcon(d.ext)}
+                            </button>
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                              {getFileIcon(d.ext)}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{d.name}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">{d.category} · {formatBytes(d.size)} · {new Date(d.uploadedAt).toLocaleDateString('ko-KR')}</p>
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {d.url && (
+                              <a href={d.url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200" title="다운로드">
+                                <Download size={15} />
+                              </a>
+                            )}
+                            <button onClick={() => deleteDocument(d)} className="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200" title="삭제">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      <span>페이지당</span>
+                      {[30, 50, 100].map(size => (
+                        <button key={size} onClick={() => { setDocPageSize(size); setDocPage(1); }} className={`px-2.5 py-1 rounded-lg text-xs font-medium ${docPageSize === size ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{size}</button>
+                      ))}
+                      <span className="ml-2 text-slate-400">{filteredDocs.length}개 중 {(docPage-1)*docPageSize+1}–{Math.min(docPage*docPageSize, filteredDocs.length)}</span>
                     </div>
-                    <div className="text-center">
-                      <p className={`font-bold text-base ${folder.color}`}>{folder.label}</p>
-                      <p className="text-xs text-slate-400 mt-0.5">{count}개 파일</p>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setDocPage(1)} disabled={docPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">«</button>
+                      <button onClick={() => setDocPage(p => Math.max(1, p-1))} disabled={docPage === 1} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">‹</button>
+                      {Array.from({length: docTotalPages}, (_, i) => i+1).filter(p => p === 1 || p === docTotalPages || Math.abs(p - docPage) <= 2).reduce((acc, p, idx, arr) => { if (idx > 0 && p - arr[idx-1] > 1) acc.push('...'); acc.push(p); return acc; }, []).map((p, idx) => p === '...' ? <span key={`e${idx}`} className="px-1.5 py-1 text-xs text-slate-400">…</span> : (
+                        <button key={p} onClick={() => setDocPage(p)} className={`px-2.5 py-1 rounded text-xs font-medium ${docPage === p ? 'bg-slate-700 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>{p}</button>
+                      ))}
+                      <button onClick={() => setDocPage(p => Math.min(docTotalPages, p+1))} disabled={docPage === docTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">›</button>
+                      <button onClick={() => setDocPage(docTotalPages)} disabled={docPage === docTotalPages} className="px-2 py-1 rounded text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-30">»</button>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                </>
+              )}
             </>
           ) : docActiveFolder === '재고로그' ? (
             /* 재고로그 폴더 = 카테고리 폴더 그리드 또는 필터링된 로그 뷰 */
@@ -4278,6 +4475,7 @@ export default function App({ user }) {
               )}
             </>
           )}
+          </div>
         </div>
       )}
 

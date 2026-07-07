@@ -688,10 +688,8 @@ export default function App({ user }) {
     const file = e.target.files[0];
     if (file) {
       const url = await uploadToStorage(file);
-      setEditLabel(prev => {
-        addToLabelImageFolder(prev.name, url, file, prev.code);
-        return { ...prev, img: url };
-      });
+      addToLabelImageFolder(editLabel.name, url, file, editLabel.code);
+      setEditLabel(prev => ({ ...prev, img: url }));
     }
   };
 
@@ -716,11 +714,11 @@ export default function App({ user }) {
     if (!searchQuery.trim()) return brandMatch && vendorMatch && typeMatch;
     const q = searchQuery.trim().toLowerCase();
     return brandMatch && vendorMatch && typeMatch && (
-      l.name.toLowerCase().includes(q) ||
-      l.code.toLowerCase().includes(q) ||
-      l.type.toLowerCase().includes(q) ||
-      l.vendor.toLowerCase().includes(q) ||
-      l.size.toLowerCase().includes(q)
+      (l.name || '').toLowerCase().includes(q) ||
+      (l.code || '').toLowerCase().includes(q) ||
+      (l.type || '').toLowerCase().includes(q) ||
+      (l.vendor || '').toLowerCase().includes(q) ||
+      (l.size || '').toLowerCase().includes(q)
     );
   });
 
@@ -1384,8 +1382,8 @@ export default function App({ user }) {
         const byId = new Map();
         [...fsData, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
         const merged = Array.from(byId.values()).sort((a, b) => {
-          const ta = typeof a.id === 'number' ? a.id : 0;
-          const tb = typeof b.id === 'number' ? b.id : 0;
+          const ta = typeof a.id === 'number' ? a.id : (parseInt(a.id, 10) || 0);
+          const tb = typeof b.id === 'number' ? b.id : (parseInt(b.id, 10) || 0);
           return tb - ta;
         });
         return merged;
@@ -1839,7 +1837,7 @@ export default function App({ user }) {
       // 발주수량(reserveStock)은 정보성 필드로 발주 계산에서 제외
       const availableStock = Math.max(0, Number(label.stock ?? 0));
       const shortage = Math.max(0, totalNeed - availableStock);
-      const cost = shortage * label.price;
+      const cost = shortage * (Number(label.price) || 0);
       totalCost += cost;
       return { ...label, careInfo: item.careInfo, needQty: totalNeed, availableStock, shortage, cost };
     }).filter(Boolean);

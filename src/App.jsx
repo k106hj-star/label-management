@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock, RotateCcw } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock, RotateCcw, BookOpen } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -7,6 +7,7 @@ import { db, storage, auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import AdminPage from './AdminPage';
+import ManualPage from './ManualPage';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
@@ -2379,6 +2380,7 @@ export default function App({ user }) {
                 ],
               },
               { id:'trash', label:'휴지통', icon:<Trash2 size={17}/>, color:'text-slate-700', bg:'bg-slate-100', badge: trash.length },
+              { id:'manual', label:'사용설명서', icon:<BookOpen size={17}/>, color:'text-slate-700', bg:'bg-slate-100' },
               // 관리자 전용 탭
               ...(isAdmin ? [{ id:'admin', label:'계정 관리', icon:<Users size={17}/>, color:'text-violet-700', bg:'bg-violet-50', adminOnly: true }] : []),
             ];
@@ -4735,6 +4737,9 @@ export default function App({ user }) {
           <p className="text-xs text-slate-400 mt-1">이 페이지는 관리자만 접근할 수 있습니다.</p>
         </div>
       )}
+
+      {/* 사용설명서 탭 */}
+      {activeTab === 'manual' && <ManualPage />}
 
       {/* [6] 자료실 탭 */}
       {activeTab === 'docs' && (

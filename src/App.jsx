@@ -1395,7 +1395,14 @@ export default function App({ user }) {
       if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === logsLastWriteJson.current) return; // 내 쓰기 확정 스킵
-      // 로그는 append-only 병합: 양쪽의 유니크한 항목을 id 기준으로 합집합
+      // [M1 수정] 다른 사용자가 '전체 삭제'로 로그를 비우면 빈 스냅샷을 신뢰해 로컬도 비움
+      // (그 외에는 동시 작성 시 감사 로그 유실 방지를 위해 id 기준 append 병합 유지)
+      if (fsData.length === 0) {
+        setStockLogs([]);
+        localStorage.setItem('label_stock_logs', JSON.stringify([]));
+        return;
+      }
+      // 로그는 append 병합: 양쪽의 유니크한 항목을 id 기준으로 합집합
       setStockLogs(prev => {
         const byId = new Map();
         [...fsData, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
@@ -1465,12 +1472,9 @@ export default function App({ user }) {
       if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === trashLastWriteJson.current) return;
-      // id 기반 병합 (양쪽 합집합)
-      setTrash(prev => {
-        const byId = new Map();
-        [...fsData, ...prev].forEach(t => { if (t && t.id != null) byId.set(t.id, t); });
-        return Array.from(byId.values()).sort((a,b) => new Date(b.deletedAt) - new Date(a.deletedAt));
-      });
+      // [M1 수정] Firestore 스냅샷을 진실공급원으로 신뢰 — 합집합 병합 시 다른 사용자의 복원/영구삭제가 되돌아감
+      setTrash(fsData);
+      localStorage.setItem('label_trash', JSON.stringify(fsData));
     });
     return () => unsub();
   }, []);
@@ -1620,12 +1624,9 @@ export default function App({ user }) {
       if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === docsLastWriteJson.current) return;
-      // documents도 id 기반 병합 (append + 업데이트)
-      setDocuments(prev => {
-        const byId = new Map();
-        [...fsData, ...prev].forEach(d => { if (d && d.id != null) byId.set(d.id, d); });
-        return Array.from(byId.values());
-      });
+      // [M1 수정] Firestore 스냅샷을 진실공급원으로 신뢰 — 합집합 병합 시 다른 사용자의 파일 삭제가 되돌아감
+      setDocuments(fsData);
+      localStorage.setItem('label_documents', JSON.stringify(fsData));
     });
     return () => unsub();
   }, []);

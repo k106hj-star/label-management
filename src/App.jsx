@@ -1817,22 +1817,24 @@ export default function App({ user }) {
     let totalCost = 0;
     const daebongRatio = calcDaebongType ? DAEBONG_RATIO[calcDaebongType] : 0;
     const daebongCalcQty = daebongRatio > 0 ? Math.ceil(totalQty / daebongRatio) : 0;
-    // 사이즈별 수량 합계 (예: M→170, L→170, ...)
+    // [M2 수정] 사이즈 문자열 정규화(대소문자/공백 무시)로 라벨 사이즈 매칭 실패 방지
+    const normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
+    // 사이즈별 수량 합계 (예: M→170, L→170, ...) — 정규화된 키 사용
     const sizeQtyMap = {};
-    validRows.forEach(r => { sizeQtyMap[r.size] = (sizeQtyMap[r.size] || 0) + r.qty; });
+    validRows.forEach(r => { const k = normSize(r.size); sizeQtyMap[k] = (sizeQtyMap[k] || 0) + r.qty; });
 
     const details = product.bom.map(item => {
       const label = labels.find(l => l.id === item.labelId);
       if (!label) return null;
       const isDaebong = label.name.includes('대봉') || label.code?.includes('DAEBONG') || label.code?.includes('ALLBST');
       // [M1 수정] 'one size', 'ONE SIZE', 'os' 등 케이스 변형도 OS로 취급
-      const _size = String(label.size || '').trim().toLowerCase();
-      const OS_VALUES = ['os', 'fr', 'one size', 'onesize', '소', '대', '아우터', ''];
+      const _size = normSize(label.size);
+      const OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
       const isSizeSpecific = !isDaebong && _size && !OS_VALUES.includes(_size);
-      // 사이즈 전용 라벨인데 해당 사이즈 수량이 없으면 제외
-      if (isSizeSpecific && sizeQtyMap[label.size] === undefined) return null;
+      // 사이즈 전용 라벨인데 해당 사이즈 수량이 없으면 제외 (정규화 키로 조회)
+      if (isSizeSpecific && sizeQtyMap[_size] === undefined) return null;
       // 사이즈 전용 라벨은 해당 사이즈 합계만 사용, 그 외는 총합
-      const effectiveQty = isSizeSpecific ? sizeQtyMap[label.size] : totalQty;
+      const effectiveQty = isSizeSpecific ? sizeQtyMap[_size] : totalQty;
       const totalNeed = isDaebong && daebongCalcQty > 0 ? daebongCalcQty : item.qtyPerUnit * effectiveQty;
       // 발주수량(reserveStock)은 정보성 필드로 발주 계산에서 제외
       const availableStock = Math.max(0, Number(label.stock ?? 0));

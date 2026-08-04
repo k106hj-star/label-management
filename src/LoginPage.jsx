@@ -45,6 +45,8 @@ export default function LoginPage() {
       } else if (!err.code) {
         // 위에서 throw 없이 return한 경우 등
       } else {
+        // Firestore 조회 실패 등: 인증 상태로 남지 않도록 로그아웃 후 오류 표시
+        try { await signOut(auth); } catch (_) {}
         setError('로그인 중 오류가 발생했습니다.');
       }
     } finally {

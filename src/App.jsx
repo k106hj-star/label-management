@@ -564,16 +564,34 @@ export default function App({ user }) {
     return () => unsub();
   }, []);
 
+  // [M3 수정] Firestore 저장 디바운스 — 안전재고/발주수량 등 연속 입력 시 키 입력마다 전체를 저장하던 것을 모아서 1회 저장
+  const labelsSaveTimer = useRef(null);
+  const labelsPendingRef = useRef(null);
+  const flushLabelsSave = () => {
+    if (labelsSaveTimer.current) { clearTimeout(labelsSaveTimer.current); labelsSaveTimer.current = null; }
+    if (labelsPendingRef.current == null) return;
+    if (!labelsCanSave.current || transactionInProgress.current) return;
+    try {
+      const clean = JSON.parse(JSON.stringify(labelsPendingRef.current));
+      labelsPendingRef.current = null;
+      labelsLastWriteJson.current = JSON.stringify(clean);
+      setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch((e) => console.error('[labels] 저장 실패:', e));
+    } catch(e) { console.error('[labels] 저장 직렬화 실패:', e); }
+  };
   useEffect(() => {
     localStorage.setItem('label_inventory', JSON.stringify(labels));
     localStorage.setItem('label_data_version', String(DATA_VERSION));
     if (!labelsCanSave.current || transactionInProgress.current) return;
-    try {
-      const clean = JSON.parse(JSON.stringify(labels));
-      labelsLastWriteJson.current = JSON.stringify(clean);
-      setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch((e) => console.error('[labels] 저장 실패:', e));
-    } catch(e) { console.error('[labels] 저장 직렬화 실패:', e); }
+    labelsPendingRef.current = labels;
+    if (labelsSaveTimer.current) clearTimeout(labelsSaveTimer.current);
+    labelsSaveTimer.current = setTimeout(flushLabelsSave, 500);
   }, [labels]);
+  // [M3 수정] 페이지 이탈/언마운트 시 대기 중인 저장을 즉시 반영해 마지막 편집 유실 방지
+  useEffect(() => {
+    const onUnload = () => flushLabelsSave();
+    window.addEventListener('beforeunload', onUnload);
+    return () => { window.removeEventListener('beforeunload', onUnload); flushLabelsSave(); };
+  }, []);
 
   // ── Products 저장 헬퍼: localStorage + Firestore + Firebase Storage 동시 저장 ──
   const saveProductsEverywhere = (data) => {
@@ -1063,7 +1081,7 @@ export default function App({ user }) {
     });
     setProducts(updatedProducts);
     setSelectedProduct(updatedProducts.find(p => p.id === selectedProduct.id));
-    saveProductsEverywhere(updatedProducts);
+    // [M4 수정] setProducts가 [products] effect로 자동 저장하므로 직접 저장 호출 제거 (이중 쓰기 방지)
     if (addedLabelIds.length > 0) {
       const addedLabelNames = addedLabelIds.map(id => { const l = labels.find(lb => lb.id === id); return l ? `${l.name} (${l.size || '-'})` : String(id); });
       addLog({ type: 'bom_add', productName: selectedProduct.name, labelNames: addedLabelNames, qty: safeQty, summary: `BOM 라벨 추가: ${selectedProduct.name} +${addedLabelIds.length}종` });
@@ -1081,7 +1099,7 @@ export default function App({ user }) {
       return p;
     });
     setProducts(updatedProducts);
-    saveProductsEverywhere(updatedProducts);
+    // [M4 수정] setProducts가 [products] effect로 자동 저장하므로 직접 저장 호출 제거 (이중 쓰기 방지)
     if (prod && removedLabel) {
       addLog({ type: 'bom_remove', productName: prod.name, labelNames: [`${removedLabel.name} (${removedLabel.size || '-'})`], summary: `BOM 라벨 제거: ${prod.name} - ${removedLabel.name}` });
     }
@@ -1102,7 +1120,7 @@ export default function App({ user }) {
       return p;
     });
     setProducts(updatedProducts);
-    saveProductsEverywhere(updatedProducts);
+    // [M4 수정] setProducts가 [products] effect로 자동 저장하므로 직접 저장 호출 제거 (이중 쓰기 방지)
     if (selectedProduct && selectedProduct.id === prodId) {
       setSelectedProduct(updatedProducts.find(p => p.id === prodId));
     }

@@ -9,6 +9,7 @@ import { doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firest
 import AdminPage from './AdminPage';
 import ManualPage from './ManualPage';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { saveSharded, loadSharded, readShardedTx, writeShardedTx } from './firestoreShard';
 
 // 이미지 압축 함수 (썸네일 사이즈에 맞게 자동 리사이즈)
 function compressImage(file, maxSize = 96) {
@@ -659,6 +660,7 @@ export default function App({ user }) {
     saveProductsEverywhere(products);
   }, [products]);
 
+
   // 이미지 미리보기 모달 상태
   const [previewImg, setPreviewImg] = useState(null);
 
@@ -1184,10 +1186,13 @@ export default function App({ user }) {
       let logItems = [];
       let finalLabels = [];
       let finalOrders = [];
+      let ordersUpdatedAt = null;
       await runTransaction(db, async (tx) => {
-        const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
+        // [분할저장] 저장리스트는 청크로 나뉘어 있으므로 트랜잭션 내 분할 읽기/쓰기 사용
+        // (Firestore 트랜잭션 규칙: 모든 읽기가 모든 쓰기보다 먼저 와야 함)
+        const ordersRead = await readShardedTx(tx, 'savedOrders');
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
-        const fsOrders = ordersSnap.data()?.list || [];
+        const fsOrders = ordersRead.list;
         const fsLabels = labelsSnap.data()?.list || [];
 
         // 이미 다른 사용자가 확정했는지 체크 (Firestore 기준)
@@ -1216,8 +1221,9 @@ export default function App({ user }) {
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
         finalOrders = JSON.parse(JSON.stringify(updatedOrders));
         tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: finalOrders });
+        ordersUpdatedAt = writeShardedTx(tx, 'savedOrders', finalOrders, ordersRead.chunkCount);
       });
+      if (ordersUpdatedAt) ordersLastUpdatedAt.current = ordersUpdatedAt;
       // 트랜잭션 성공 → 로컬 상태를 Firestore의 최종 결과로 교체
       setLabels(finalLabels);
       setSavedOrders(finalOrders);
@@ -1250,10 +1256,12 @@ export default function App({ user }) {
       let logItems = [];
       let finalLabels = [];
       let finalOrders = [];
+      let ordersUpdatedAt = null;
       await runTransaction(db, async (tx) => {
-        const ordersSnap = await tx.get(doc(db, 'settings', 'savedOrders'));
+        // [분할저장] 저장리스트는 청크로 나뉘어 있으므로 트랜잭션 내 분할 읽기/쓰기 사용
+        const ordersRead = await readShardedTx(tx, 'savedOrders');
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
-        const fsOrders = ordersSnap.data()?.list || [];
+        const fsOrders = ordersRead.list;
         const fsLabels = labelsSnap.data()?.list || [];
 
         const targetOrder = fsOrders.find(o => o.id === order.id);
@@ -1280,8 +1288,9 @@ export default function App({ user }) {
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
         finalOrders = JSON.parse(JSON.stringify(updatedOrders));
         tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
-        tx.set(doc(db, 'settings', 'savedOrders'), { list: finalOrders });
+        ordersUpdatedAt = writeShardedTx(tx, 'savedOrders', finalOrders, ordersRead.chunkCount);
       });
+      if (ordersUpdatedAt) ordersLastUpdatedAt.current = ordersUpdatedAt;
       // 트랜잭션 성공 → 로컬 상태를 Firestore 최종 결과로 교체
       setLabels(finalLabels);
       setSavedOrders(finalOrders);
@@ -1304,18 +1313,18 @@ export default function App({ user }) {
   // --- SavedOrders 실시간 동기화 (onSnapshot) ---
   const ordersCanSave = useRef(false);
   const ordersLastWriteJson = useRef('');
+  const ordersLastUpdatedAt = useRef(null); // [분할저장] 자기 쓰기 감지용
   useEffect(() => {
     // [L1-new 수정] 초기 로드는 Firestore를 진실공급원으로 사용
     // 이전에는 로컬과 Firestore를 합집합으로 병합 후 Firestore에 다시 썼는데,
     // 다른 사용자가 방금 삭제한 발주가 내 로컬에 남아있으면 삭제가 되돌아가는 문제 있음
-    getDoc(doc(db, 'settings', 'savedOrders')).then(snap => {
-      const fsHasData = snap.exists() && Array.isArray(snap.data()?.list) && snap.data().list.length > 0;
-      if (fsHasData) {
+    // [분할저장] 1MB 초과 방지를 위해 저장리스트를 여러 청크 문서로 나눠 저장/로드한다.
+    loadSharded('savedOrders').then(({ list, updatedAt }) => {
+      if (Array.isArray(list) && list.length > 0) {
         // Firestore에 데이터가 있으면 그대로 사용
-        const fsData = snap.data().list;
-        setSavedOrders(fsData);
-        localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
-        ordersLastWriteJson.current = JSON.stringify(fsData);
+        setSavedOrders(list);
+        localStorage.setItem('label_saved_orders', JSON.stringify(list));
+        ordersLastUpdatedAt.current = updatedAt;
       } else {
         // Firestore가 비어있을 때만 localStorage를 업로드 (최초 복구용)
         const localRaw = localStorage.getItem('label_saved_orders');
@@ -1325,8 +1334,7 @@ export default function App({ user }) {
             if (Array.isArray(localData) && localData.length > 0) {
               setSavedOrders(localData);
               const clean = JSON.parse(JSON.stringify(localData));
-              ordersLastWriteJson.current = JSON.stringify(clean);
-              setDoc(doc(db, 'settings', 'savedOrders'), { list: clean }).catch((e) => console.error('[savedOrders] 초기 복구 저장 실패:', e));
+              saveSharded('savedOrders', clean).then((ua) => { ordersLastUpdatedAt.current = ua; }).catch((e) => console.error('[savedOrders] 초기 복구 저장 실패:', e));
             }
           } catch(e) { console.error('[savedOrders] 초기 복구 실패:', e); }
         }
@@ -1335,14 +1343,16 @@ export default function App({ user }) {
 
     // [H2-new 수정] 실시간 리스너: Firestore 스냅샷을 그대로 신뢰
     // 이전에는 prev.map(로컬 기준 병합) + 빠진 것만 push → 다른 사용자가 삭제한 발주가 되살아나는 문제
+    // 메타데이터 문서(settings/savedOrders)의 updatedAt 변경을 감지해 청크 전체를 다시 읽는다.
     const unsub = onSnapshot(doc(db, 'settings', 'savedOrders'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
-      const fsData = snap.data().list;
-      if (!Array.isArray(fsData)) return;
-      const fsJson = JSON.stringify(fsData);
-      if (fsJson === ordersLastWriteJson.current) return; // 내 쓰기 확정 스킵
-      setSavedOrders(fsData);
-      localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
+      const meta = snap.data();
+      if (meta.updatedAt && meta.updatedAt === ordersLastUpdatedAt.current) return; // 내 쓰기 확정 스킵
+      loadSharded('savedOrders').then(({ list: fsData }) => {
+        if (!Array.isArray(fsData)) return;
+        setSavedOrders(fsData);
+        localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
+      }).catch((e) => console.error('[savedOrders] 실시간 로드 실패:', e));
     });
     return () => unsub();
   }, []);
@@ -1352,8 +1362,7 @@ export default function App({ user }) {
     if (!ordersCanSave.current || transactionInProgress.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
-      ordersLastWriteJson.current = JSON.stringify(cleanData);
-      setDoc(doc(db, 'settings', 'savedOrders'), { list: cleanData }).catch((e) => console.error('[savedOrders] 저장 실패:', e));
+      saveSharded('savedOrders', cleanData).then((ua) => { ordersLastUpdatedAt.current = ua; }).catch((e) => console.error('[savedOrders] 저장 실패:', e));
     } catch(e) {}
   }, [savedOrders]);
 
@@ -1369,51 +1378,68 @@ export default function App({ user }) {
   });
   const logsCanSave = useRef(false);
   const logsLastWriteJson = useRef('');
+  const logsLastUpdatedAt = useRef(null); // [분할저장] 자기 쓰기 감지용
   const firestoreLogsLoaded = useRef(false);
   useEffect(() => {
     if (firestoreLogsLoaded.current) return;
     firestoreLogsLoaded.current = true;
     // [C3 수정] Firestore 우선 로드 + onSnapshot 실시간 동기화
-    getDoc(doc(db, 'settings', 'stockLogs')).then(snap => {
-      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length > 0) {
-        const data = snap.data().list;
-        setStockLogs(data);
-        localStorage.setItem('label_stock_logs', JSON.stringify(data));
-        logsLastWriteJson.current = JSON.stringify(data);
+    // [분할저장] 1MB 초과 방지를 위해 재고로그를 여러 청크 문서로 나눠 저장/로드한다.
+    loadSharded('stockLogs').then(({ list, updatedAt }) => {
+      if (Array.isArray(list) && list.length > 0) {
+        // [분할저장 이전] 재고로그가 1MB를 넘겨 Firestore 저장이 실패해 온 경우,
+        // 최근 로그가 로컬(localStorage)에만 남아있을 수 있다. 유실 방지를 위해
+        // Firestore 로그와 로컬 로그를 id 기준으로 병합(union)한다.
+        setStockLogs(prev => {
+          const byId = new Map();
+          [...list, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
+          const merged = Array.from(byId.values()).sort((a, b) => {
+            const ta = typeof a.id === 'number' ? a.id : (parseInt(a.id, 10) || 0);
+            const tb = typeof b.id === 'number' ? b.id : (parseInt(b.id, 10) || 0);
+            return tb - ta;
+          });
+          localStorage.setItem('label_stock_logs', JSON.stringify(merged));
+          return merged;
+        });
+        logsLastUpdatedAt.current = updatedAt;
+        // 병합 결과는 [stockLogs] 저장 effect가 분할 형식으로 다시 저장하므로
+        // logsLastWriteJson은 갱신하지 않는다.
       } else if (logsWasInLS.current) {
         // Firestore가 비어있을 때만 localStorage로 복구
         try {
           const clean = JSON.parse(JSON.stringify(stockLogs));
-          setDoc(doc(db, 'settings', 'stockLogs'), { list: clean }).catch((e) => console.error('[stockLogs] 초기 복구 저장 실패:', e));
+          saveSharded('stockLogs', clean).then((ua) => { logsLastUpdatedAt.current = ua; }).catch((e) => console.error('[stockLogs] 초기 복구 저장 실패:', e));
         } catch(e) { console.error('[stockLogs] 초기 복구 실패:', e); }
       }
     }).catch((e) => console.error('[stockLogs] 초기 로드 실패:', e)).finally(() => { logsCanSave.current = true; });
 
     // [H2 수정] 실시간 리스너 설치: 다른 사용자의 로그 변경 반영
+    // 메타데이터 문서(settings/stockLogs)의 updatedAt 변경을 감지해 청크 전체를 다시 읽는다.
     const unsub = onSnapshot(doc(db, 'settings', 'stockLogs'), { includeMetadataChanges: true }, (snap) => {
       if (!snap.exists() || snap.metadata.hasPendingWrites) return;
-      const fsData = snap.data().list;
-      if (!Array.isArray(fsData)) return;
-      const fsJson = JSON.stringify(fsData);
-      if (fsJson === logsLastWriteJson.current) return; // 내 쓰기 확정 스킵
-      // [M1 수정] 다른 사용자가 '전체 삭제'로 로그를 비우면 빈 스냅샷을 신뢰해 로컬도 비움
-      // (그 외에는 동시 작성 시 감사 로그 유실 방지를 위해 id 기준 append 병합 유지)
-      if (fsData.length === 0) {
-        setStockLogs([]);
-        localStorage.setItem('label_stock_logs', JSON.stringify([]));
-        return;
-      }
-      // 로그는 append 병합: 양쪽의 유니크한 항목을 id 기준으로 합집합
-      setStockLogs(prev => {
-        const byId = new Map();
-        [...fsData, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
-        const merged = Array.from(byId.values()).sort((a, b) => {
-          const ta = typeof a.id === 'number' ? a.id : (parseInt(a.id, 10) || 0);
-          const tb = typeof b.id === 'number' ? b.id : (parseInt(b.id, 10) || 0);
-          return tb - ta;
+      const meta = snap.data();
+      if (meta.updatedAt && meta.updatedAt === logsLastUpdatedAt.current) return; // 내 쓰기 확정 스킵
+      loadSharded('stockLogs').then(({ list: fsData }) => {
+        if (!Array.isArray(fsData)) return;
+        // [M1 수정] 다른 사용자가 '전체 삭제'로 로그를 비우면 빈 스냅샷을 신뢰해 로컬도 비움
+        // (그 외에는 동시 작성 시 감사 로그 유실 방지를 위해 id 기준 append 병합 유지)
+        if (fsData.length === 0) {
+          setStockLogs([]);
+          localStorage.setItem('label_stock_logs', JSON.stringify([]));
+          return;
+        }
+        // 로그는 append 병합: 양쪽의 유니크한 항목을 id 기준으로 합집합
+        setStockLogs(prev => {
+          const byId = new Map();
+          [...fsData, ...prev].forEach(log => { if (log && log.id != null) byId.set(log.id, log); });
+          const merged = Array.from(byId.values()).sort((a, b) => {
+            const ta = typeof a.id === 'number' ? a.id : (parseInt(a.id, 10) || 0);
+            const tb = typeof b.id === 'number' ? b.id : (parseInt(b.id, 10) || 0);
+            return tb - ta;
+          });
+          return merged;
         });
-        return merged;
-      });
+      }).catch((e) => console.error('[stockLogs] 실시간 로드 실패:', e));
     });
     return () => unsub();
   }, []);
@@ -1423,7 +1449,7 @@ export default function App({ user }) {
     try {
       const cleanData = JSON.parse(JSON.stringify(stockLogs));
       logsLastWriteJson.current = JSON.stringify(cleanData);
-      setDoc(doc(db, 'settings', 'stockLogs'), { list: cleanData }).catch((e) => console.error('[stockLogs] 저장 실패:', e));
+      saveSharded('stockLogs', cleanData).then((ua) => { logsLastUpdatedAt.current = ua; }).catch((e) => console.error('[stockLogs] 저장 실패:', e));
     } catch(e) { console.error('[stockLogs] 저장 직렬화 실패:', e); }
   }, [stockLogs]);
 

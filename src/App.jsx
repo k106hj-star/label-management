@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock, RotateCcw, BookOpen } from 'lucide-react';
+import { Package, Calculator, Layers, Plus, Trash2, Image as ImageIcon, AlertCircle, ZoomIn, X, Upload, MoreVertical, Pencil, Search, GripVertical, ClipboardList, Save, History, FolderOpen, FileText, Download, File, FilePlus, ChevronLeft, ChevronRight, ChevronDown, FileDown, Users, Tag, ShoppingBag, FileEdit, LayoutDashboard, TrendingUp, TrendingDown, Activity, CheckCircle2, XCircle, Clock, RotateCcw, BookOpen, Warehouse } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
@@ -1209,13 +1209,22 @@ export default function App({ user }) {
           const change = isFactory ? 0 : -deductQty;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
+        // 본사납품: 본사재고 차감 / 공장 재고: 두 유형 모두 order.factory에 증가
+        const _factory = (order.factory || '').trim();
+        const _applyFactory = _factory && _factory !== '-';
         const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
           if (!matched) return lbl;
           const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
-          if (isFactory) return lbl; // 공장납품은 본사재고에서 차감 안 함
           const deductQty = Number(matched.needQty || matched.shortage || 0);
-          return { ...lbl, stock: Number(lbl.stock || 0) - deductQty };
+          const newLbl = { ...lbl };
+          if (!isFactory) newLbl.stock = Number(lbl.stock || 0) - deductQty; // 본사납품만 본사재고 차감
+          if (_applyFactory) {
+            const fstock = { ...(lbl.factoryStock || {}) };
+            fstock[_factory] = Number(fstock[_factory] || 0) + deductQty; // 공장 재고 증가
+            newLbl.factoryStock = fstock;
+          }
+          return newLbl;
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: true, appliedAt } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -1276,13 +1285,22 @@ export default function App({ user }) {
           const change = isFactory ? 0 : +restoreQty;
           return { labelId: d.id, labelName: d.labelName || d.name, size: d.size, before, change, after: before + change, deliveryType: lbl?.deliveryType || '본사납품' };
         });
+        // 발주 확정의 반대: 본사납품은 본사재고 복원 / 공장 재고는 두 유형 모두 감소
+        const _factory = (order.factory || '').trim();
+        const _applyFactory = _factory && _factory !== '-';
         const updatedLabels = fsLabels.map(lbl => {
           const matched = orderItems.find(d => d.id === lbl.id);
           if (!matched) return lbl;
           const isFactory = (lbl.deliveryType || '본사납품') === '공장납품';
-          if (isFactory) return lbl;
           const restoreQty = Number(matched.needQty || matched.shortage || 0);
-          return { ...lbl, stock: Number(lbl.stock || 0) + restoreQty };
+          const newLbl = { ...lbl };
+          if (!isFactory) newLbl.stock = Number(lbl.stock || 0) + restoreQty; // 본사납품만 본사재고 복원
+          if (_applyFactory) {
+            const fstock = { ...(lbl.factoryStock || {}) };
+            fstock[_factory] = Number(fstock[_factory] || 0) - restoreQty; // 공장 재고 감소
+            newLbl.factoryStock = fstock;
+          }
+          return newLbl;
         });
         const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, applied: false, appliedAt: null } : o);
         finalLabels = JSON.parse(JSON.stringify(updatedLabels));
@@ -1938,6 +1956,51 @@ export default function App({ user }) {
     setConfirmDeleteFactoryIdx(null);
   };
 
+  // ── 공장별 재고 화면 상태 & 제품 입고(라벨 차감) ──
+  const [factoryStockTab, setFactoryStockTab] = useState('');      // 선택된 공장 (보유 현황)
+  const [receiveFactory, setReceiveFactory] = useState('');
+  const [receiveProductId, setReceiveProductId] = useState('');
+  const [receiveQty, setReceiveQty] = useState('');
+  const receiveProductToFactory = async () => {
+    const factory = receiveFactory;
+    const pid = parseInt(receiveProductId);
+    const qty = parseInt(receiveQty);
+    if (!factory) return alert('공장을 선택하세요.');
+    if (!pid) return alert('상품을 선택하세요.');
+    if (!Number.isFinite(qty) || qty <= 0) return alert('입고 수량을 올바르게 입력하세요.');
+    const product = products.find(p => p.id === pid);
+    if (!product || !(product.bom || []).length) return alert('소요 라벨(BOM)이 설정된 상품이 아닙니다.');
+    const bomLabels = (product.bom || []).map(b => { const l = labels.find(x => x.id === b.labelId); return { name: l ? `${l.name}${l.size ? ' (' + l.size + ')' : ''}` : String(b.labelId), qtyPer: Number(b.qtyPerUnit || 1) }; });
+    if (!window.confirm(`'${factory}'에서 '${product.name}' ${qty.toLocaleString()}개 입고 처리합니다.\n\n다음 라벨이 공장 재고에서 차감됩니다:\n${bomLabels.map(b => `• ${b.name}: ${(b.qtyPer * qty).toLocaleString()}장`).join('\n')}\n\n진행할까요?`)) return;
+    transactionInProgress.current = true;
+    try {
+      let finalLabels = [];
+      await runTransaction(db, async (tx) => {
+        const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
+        const fsLabels = labelsSnap.data()?.list || [];
+        const updated = fsLabels.map(lbl => {
+          const bomItem = (product.bom || []).find(b => b.labelId === lbl.id);
+          if (!bomItem) return lbl;
+          const consume = qty * Number(bomItem.qtyPerUnit || 1);
+          const fstock = { ...(lbl.factoryStock || {}) };
+          fstock[factory] = Number(fstock[factory] || 0) - consume;
+          return { ...lbl, factoryStock: fstock };
+        });
+        finalLabels = JSON.parse(JSON.stringify(updated));
+        tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
+      });
+      setLabels(finalLabels);
+      addLog({ type: 'factory_receive', factory, productName: product.name, qty, summary: `제품 입고: ${product.name} ${qty}개 · ${factory} 라벨 차감` });
+      alert(`입고 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
+      setReceiveQty('');
+    } catch(e) {
+      console.error('[receiveProduct] 실패:', e);
+      alert('입고 처리 중 오류: ' + e.message);
+    } finally {
+      transactionInProgress.current = false;
+    }
+  };
+
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
   const [calcRnNumber, setCalcRnNumber] = useState('');
@@ -2501,6 +2564,7 @@ export default function App({ user }) {
             const items = [
               { id:'dashboard', label:'현황', icon:<LayoutDashboard size={17}/>, color:'text-slate-900', bg:'bg-slate-100' },
               { id:'inventory', label:'재고리스트', icon:<Package size={17}/>, color:'text-blue-700', bg:'bg-blue-50' },
+              { id:'factoryStock', label:'공장별 재고', icon:<Warehouse size={17}/>, color:'text-teal-700', bg:'bg-teal-50' },
               { id:'bom', label:'상품 세팅', icon:<Layers size={17}/>, color:'text-indigo-700', bg:'bg-indigo-50' },
               { id:'calc', label:'발주 계산기', icon:<Calculator size={17}/>, color:'text-emerald-700', bg:'bg-emerald-50' },
               { id:'orders', label:'저장리스트', icon:<ClipboardList size={17}/>, color:'text-orange-700', bg:'bg-orange-50', badge:savedOrders.filter(o => Date.now() - o.id < 3600000).length },
@@ -3359,6 +3423,90 @@ export default function App({ user }) {
             )}
           </div>
           </>
+        )}
+
+        {/* 공장별 재고 탭 */}
+        {activeTab === 'factoryStock' && (
+          <div className="p-6 max-w-5xl mx-auto space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Warehouse size={22} className="text-teal-600"/> 공장별 재고</h2>
+              <p className="text-sm text-slate-500 mt-1">발주를 확정하면 해당 공장에 라벨이 입고되고, 제품 입고를 처리하면 라벨이 차감됩니다.</p>
+            </div>
+
+            {/* 제품 입고 (라벨 차감) */}
+            <div className="bg-teal-50 border border-teal-200 rounded-xl p-5">
+              <h3 className="text-sm font-bold text-teal-900 mb-3">📥 제품 입고 (라벨 차감)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">공장</label>
+                  <select value={receiveFactory} onChange={e => setReceiveFactory(e.target.value)} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">-- 선택 --</option>
+                    {factoryList.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">상품</label>
+                  <select value={receiveProductId} onChange={e => setReceiveProductId(e.target.value)} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">-- 선택 --</option>
+                    {products.filter(p => (p.bom || []).length > 0).map(p => <option key={p.id} value={p.id}>[{p.brand}] {p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">입고 수량(제품)</label>
+                  <input type="number" value={receiveQty} onChange={e => setReceiveQty(e.target.value)} placeholder="0" className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <button onClick={receiveProductToFactory} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-sm">입고 처리 (라벨 차감)</button>
+              </div>
+            </div>
+
+            {/* 공장별 보유 현황 */}
+            <div>
+              <h3 className="text-sm font-bold text-slate-700 mb-3">공장별 보유 현황</h3>
+              {factoryList.length === 0 ? (
+                <p className="text-slate-400 text-sm">먼저 발주 계산기에서 공장을 등록하세요.</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {factoryList.map(f => (
+                      <button key={f} onClick={() => setFactoryStockTab(f)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${(factoryStockTab || factoryList[0]) === f ? 'bg-teal-600 text-white border-teal-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>{f}</button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const f = factoryStockTab || factoryList[0];
+                    const rows = labels.map(l => ({ l, qty: Number((l.factoryStock || {})[f] || 0) })).filter(r => r.qty !== 0).sort((a, b) => b.qty - a.qty);
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">{f} — {rows.length}종 보유</div>
+                        {rows.length === 0 ? (
+                          <p className="text-center text-slate-400 text-sm py-8">보유 중인 라벨이 없습니다. (발주를 확정하면 이 공장에 라벨이 입고됩니다)</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead><tr className="text-left text-slate-500 border-b border-slate-100">
+                                <th className="p-3 font-medium whitespace-nowrap">라벨명</th><th className="p-3 font-medium whitespace-nowrap">품번</th><th className="p-3 font-medium whitespace-nowrap">사이즈</th><th className="p-3 font-medium text-right whitespace-nowrap">보유 수량</th>
+                              </tr></thead>
+                              <tbody>
+                                {rows.map(({ l, qty }) => (
+                                  <tr key={l.id} className="border-b border-slate-50 hover:bg-slate-50">
+                                    <td className="p-3 font-medium text-slate-800">{l.name}</td>
+                                    <td className="p-3 text-slate-500">{l.code || '-'}</td>
+                                    <td className="p-3 text-slate-500">{l.size || '-'}</td>
+                                    <td className={`p-3 text-right font-bold ${qty < 0 ? 'text-red-500' : 'text-teal-700'}`}>{qty.toLocaleString()}장</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {/* [2] 상품 BOM 세팅 탭 */}

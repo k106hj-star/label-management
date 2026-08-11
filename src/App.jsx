@@ -1958,6 +1958,9 @@ export default function App({ user }) {
 
   // ── 공장별 재고 화면 상태 & 제품 입고(발주 기준, 색상×사이즈 그리드) ──
   const [factoryStockTab, setFactoryStockTab] = useState('');   // 선택된 공장 (보유 현황)
+  const [receiveFactory, setReceiveFactory] = useState('');     // 입고: 1단계 공장 선택
+  const [receiveOrderSearch, setReceiveOrderSearch] = useState(''); // 입고: 발주품목 검색어
+  const [receiveOrderSearchOpen, setReceiveOrderSearchOpen] = useState(false);
   const [receiveOrderId, setReceiveOrderId] = useState('');     // 입고 처리할 발주(주문) id
   const [receiveGrid, setReceiveGrid] = useState({});           // { 'color|size': 입고수량 }
   const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
@@ -3478,14 +3481,49 @@ export default function App({ user }) {
             {/* 제품 입고 (발주 기준, 색상×사이즈) */}
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-5">
               <h3 className="text-sm font-bold text-teal-900 mb-3">📥 제품 입고 (라벨 차감)</h3>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">입고할 발주 선택 (확정된 발주만)</label>
-                <select value={receiveOrderId} onChange={e => { setReceiveOrderId(e.target.value); setReceiveGrid({}); }} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                  <option value="">-- 발주 선택 --</option>
-                  {savedOrders.filter(o => o.applied && o.factory && o.factory !== '-').map(o => (
-                    <option key={o.id} value={o.id}>[{o.factory}] {o.productName || '(미선택)'} · {o.date}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">① 공장 선택</label>
+                  <select value={receiveFactory} onChange={e => { setReceiveFactory(e.target.value); setReceiveOrderId(''); setReceiveOrderSearch(''); setReceiveGrid({}); }} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                    <option value="">-- 공장 선택 --</option>
+                    {[...new Set(savedOrders.filter(o => o.applied && o.factory && o.factory !== '-').map(o => o.factory))].map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">② 발주품목 (검색·선택)</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={receiveOrderSearch}
+                      onChange={e => { setReceiveOrderSearch(e.target.value); setReceiveOrderSearchOpen(true); if (!e.target.value) { setReceiveOrderId(''); setReceiveGrid({}); } }}
+                      onFocus={() => setReceiveOrderSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setReceiveOrderSearchOpen(false), 150)}
+                      disabled={!receiveFactory}
+                      placeholder={receiveFactory ? '상품명 검색 후 선택...' : '먼저 공장을 선택하세요'}
+                      className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                    {receiveOrderSearchOpen && receiveFactory && (() => {
+                      const list = savedOrders.filter(o => o.applied && o.factory === receiveFactory && `${o.productName || ''}`.toLowerCase().includes(receiveOrderSearch.toLowerCase()));
+                      return (
+                        <ul className="absolute z-50 w-full mt-1 bg-white border border-teal-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                          {list.length === 0 ? (
+                            <li className="px-3 py-2 text-sm text-slate-400">해당 공장의 확정 발주가 없습니다.</li>
+                          ) : list.map(o => (
+                            <li
+                              key={o.id}
+                              onMouseDown={() => { setReceiveOrderId(String(o.id)); setReceiveOrderSearch(`${o.productName || '(미선택)'}`); setReceiveOrderSearchOpen(false); setReceiveGrid({}); }}
+                              className={`px-3 py-2 text-sm cursor-pointer hover:bg-teal-50 ${String(o.id) === receiveOrderId ? 'bg-teal-100 font-medium' : ''}`}
+                            >
+                              {o.productName || '(미선택)'} <span className="text-xs text-slate-400">· {o.date}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
+                  </div>
+                </div>
               </div>
               {receiveOrderId && (() => {
                 const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));

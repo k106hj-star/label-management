@@ -1996,13 +1996,14 @@ export default function App({ user }) {
     sizes.forEach(s => { orderedMap[`|${s}`] = bySize[s]; });
     return { colors: [''], sizes, orderedMap, hasColor: false };
   };
-  const receiveOrderToFactory = async () => {
+  const processUsage = async (mode = 'use') => {   // mode: 'use'=사용 처리(차감), 'undo'=처리 취소(복구)
+    const isUndo = mode === 'undo';
     const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));
-    if (!order) return alert('입고할 발주를 선택하세요.');
+    if (!order) return alert('발주를 선택하세요.');
     const factory = (order.factory || '').trim();
     if (!factory || factory === '-') return alert('이 발주에는 공장이 지정되어 있지 않습니다.');
     const { colors, sizes, orderedMap } = getOrderGrid(order);
-    // 사이즈별 발주수량 / 입고수량 합계
+    // 사이즈별 발주수량 / 입력수량 합계
     const orderedSizeQty = {}; let totalOrdered = 0;
     const receivedSizeQty = {}; let totalReceived = 0;
     colors.forEach(c => sizes.forEach(s => {
@@ -2013,8 +2014,8 @@ export default function App({ user }) {
       totalOrdered += ord;
       if (rec > 0) { receivedSizeQty[k] = (receivedSizeQty[k] || 0) + rec; totalReceived += rec; }
     }));
-    if (totalReceived <= 0) return alert('입고 수량을 1개 이상 입력하세요.');
-    // 라벨별 차감량(비율 기준): 사이즈 전용은 해당 사이즈 비율, 공통(OS)은 전체 비율
+    if (totalReceived <= 0) return alert('수량을 1개 이상 입력하세요.');
+    // 라벨별 수량(비율 기준): 사이즈 전용은 해당 사이즈 비율, 공통(OS)은 전체 비율
     const consumeMap = {}; const summary = [];
     (order.details || []).forEach(d => {
       const s = _normSize(d.size);
@@ -2025,8 +2026,9 @@ export default function App({ user }) {
       const consume = Math.round(Number(d.needQty || 0) * ratio);
       if (consume > 0) { consumeMap[d.id] = (consumeMap[d.id] || 0) + consume; summary.push(`• ${d.name}${d.size ? ' (' + d.size + ')' : ''}: ${consume.toLocaleString()}장`); }
     });
-    if (!Object.keys(consumeMap).length) return alert('차감할 라벨이 없습니다.');
-    if (!window.confirm(`'${factory}'에 '${order.productName}' 사용 처리합니다.\n총 입고 제품: ${totalReceived.toLocaleString()}개\n\n공장 재고에서 차감될 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
+    if (!Object.keys(consumeMap).length) return alert('처리할 라벨이 없습니다.');
+    const actionLabel = isUndo ? '처리 취소(사용 수량 복구)' : '사용 처리(라벨 차감)';
+    if (!window.confirm(`'${factory}' · '${order.productName}' ${actionLabel}합니다.\n총 제품 수량: ${totalReceived.toLocaleString()}개\n\n대상 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
     transactionInProgress.current = true;
     try {
       let finalLabels = [];
@@ -2038,19 +2040,19 @@ export default function App({ user }) {
           if (!consume) return lbl;
           const fstock = { ...(lbl.factoryStock || {}) };
           const e = _fsEntry(fstock[factory]);
-          fstock[factory] = { received: e.received, used: e.used + consume }; // 사용 증가
+          fstock[factory] = { received: e.received, used: isUndo ? e.used - consume : e.used + consume };
           return { ...lbl, factoryStock: fstock };
         });
         finalLabels = JSON.parse(JSON.stringify(updated));
         tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
       });
       setLabels(finalLabels);
-      addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: `제품 입고: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
-      alert(`사용 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
+      addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: isUndo ? `사용 처리 취소: ${order.productName} ${totalReceived}개 · ${factory} 사용 수량 복구` : `제품 사용: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
+      alert(isUndo ? `처리 취소 완료 — ${factory}의 사용 수량이 복구되었습니다.` : `사용 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
       setReceiveGrid({});
     } catch(e) {
-      console.error('[receiveOrder] 실패:', e);
-      alert('사용 처리 중 오류: ' + e.message);
+      console.error('[processUsage] 실패:', e);
+      alert((isUndo ? '처리 취소' : '사용 처리') + ' 중 오류: ' + e.message);
     } finally {
       transactionInProgress.current = false;
     }
@@ -3573,8 +3575,9 @@ export default function App({ user }) {
                   </div>
                 );
               })()}
-              <div className="mt-3 flex justify-end">
-                <button onClick={receiveOrderToFactory} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">사용 처리 (라벨 차감)</button>
+              <div className="mt-3 flex justify-end gap-2">
+                <button onClick={() => processUsage('undo')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-600 rounded-lg text-sm font-bold shadow-sm">↩ 처리 취소 (복구)</button>
+                <button onClick={() => processUsage('use')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">사용 처리 (라벨 차감)</button>
               </div>
             </div>
 

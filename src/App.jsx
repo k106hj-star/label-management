@@ -3576,8 +3576,8 @@ export default function App({ user }) {
                 );
               })()}
               <div className="mt-3 flex justify-end gap-2">
-                <button onClick={() => processUsage('undo')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-600 rounded-lg text-sm font-bold shadow-sm">↩ 처리 취소 (복구)</button>
                 <button onClick={() => processUsage('use')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">사용 처리 (라벨 차감)</button>
+                <button onClick={() => processUsage('undo')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-600 rounded-lg text-sm font-bold shadow-sm">처리 취소 (복구)</button>
               </div>
             </div>
 

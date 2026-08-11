@@ -4544,9 +4544,7 @@ export default function App({ user }) {
                             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
                               <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -4554,9 +4552,7 @@ export default function App({ user }) {
                               <tr key={i} className="hover:bg-slate-50">
                                 <td className="p-3"><div className="font-medium text-slate-800">{d.labelName || d.name}</div><div className="text-xs text-slate-400">{d.code}</div></td>
                                 <td className="p-3 text-center text-slate-700 font-bold">{d.size || '-'}</td>
-                                <td className="p-3 text-right text-slate-600">{Number(d.stock ?? 0).toLocaleString()}</td>
-                                <td className="p-3 text-right text-amber-700 font-medium">{Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}</td>
-                                <td className="p-3 text-right font-bold">
+                                <td className="p-3 text-right text-slate-600">{Number(d.stock ?? 0).toLocaleString()}</td>                                <td className="p-3 text-right font-bold">
                                   <input type="number" min="0" value={d.shortage}
                                     onChange={e => setViewOrderEdits(prev => { const nd = [...prev.details]; nd[d._globalIdx] = { ...nd[d._globalIdx], shortage: parseInt(e.target.value) || 0 }; return { ...prev, details: nd }; })}
                                     className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300" />
@@ -4570,7 +4566,7 @@ export default function App({ user }) {
                   ));
                 }
 
-                // ── 보기 모드: 계산기 결과처럼 (본사 발주서 + 업체 공급처별), 본사재고/가용재고/필요수량 ──
+                // ── 보기 모드: 계산기 결과처럼 (본사 발주서 + 업체 공급처별), 본사재고/필요수량 ──
                 const hqItems = withIdx.filter(d => Number(d.availableStock ?? d.stock ?? 0) > 0);
                 const vendorItems = withIdx.filter(d => Number(d.shortage || 0) > 0);
                 const vGroups = {};
@@ -4600,9 +4596,7 @@ export default function App({ user }) {
                               <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                               <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                               <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                             </tr>
                           </thead>
@@ -4643,9 +4637,7 @@ export default function App({ user }) {
                                 <td className="p-3 text-right text-slate-600">
                                   <div>{Number(d.stock ?? 0).toLocaleString()}</div>
                                   {Number(d.reserveStock ?? 0) > 0 && <div className="text-xs text-slate-400 whitespace-nowrap">발주중 {Number(d.reserveStock).toLocaleString()}</div>}
-                                </td>
-                                <td className="p-3 text-right text-amber-700 font-medium">{Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}</td>
-                                <td className="p-3 text-right font-bold"><span className={d.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>{Number(d.needQty ?? 0).toLocaleString()}개</span></td>
+                                </td>                                <td className="p-3 text-right font-bold"><span className={d.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>{Number(d.needQty ?? 0).toLocaleString()}개</span></td>
                                 <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrder.note || '-'}</td>
                               </tr>
                             ))}

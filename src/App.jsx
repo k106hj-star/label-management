@@ -601,7 +601,12 @@ export default function App({ user }) {
     try {
       const clean = JSON.parse(JSON.stringify(data));
       if (productsLastWriteJson.current !== undefined) productsLastWriteJson.current = JSON.stringify(clean);
-      setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch((e) => console.error('[products] Firestore 저장 실패:', e));
+      const _dbg = (clean.find(x=>x.name&&x.name.includes('OGST1905'))?.bom||[]).map(b=>b.careInfo?.code).filter(Boolean);
+      const _ua = Date.now();
+      console.log('[DIAG products] setDoc 호출 ua=', _ua, 'ogst=', JSON.stringify(_dbg));
+      setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: _ua })
+        .then(() => console.log('[DIAG products] setDoc 성공 ✅ ua=', _ua, 'ogst=', JSON.stringify(_dbg)))
+        .catch((e) => console.error('[products] Firestore 저장 실패:', e));
       const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
       const backupRef = ref(storage, 'backups/products-backup.json');
       uploadBytes(backupRef, jsonBlob).catch((e) => console.error('[products] Storage 백업 실패:', e));
@@ -639,11 +644,13 @@ export default function App({ user }) {
 
     // [H4-new] 실시간 리스너: 다른 사용자의 BOM 변경 실시간 반영 (stale BOM 기반 재고 차감 방지)
     const unsub = onSnapshot(doc(db, 'settings', 'products'), { includeMetadataChanges: true }, (snap) => {
-      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      if (!snap.exists() || snap.metadata.hasPendingWrites) { console.log('[DIAG onSnap products] skip pending=', snap.metadata?.hasPendingWrites, 'fromCache=', snap.metadata?.fromCache); return; }
       const fsData = snap.data().list;
       if (!Array.isArray(fsData)) return;
+      const _dbg = (fsData.find(x=>x.name&&x.name.includes('OGST1905'))?.bom||[]).map(b=>b.careInfo?.code).filter(Boolean);
       const fsJson = JSON.stringify(fsData);
-      if (fsJson === productsLastWriteJson.current) return;
+      if (fsJson === productsLastWriteJson.current) { console.log('[DIAG onSnap products] guard match skip, ua=', snap.data().updatedAt, 'ogst=', JSON.stringify(_dbg)); return; }
+      console.log('[DIAG onSnap products] ⚠️ setProducts(fsData) ua=', snap.data().updatedAt, 'ogst=', JSON.stringify(_dbg), 'fromCache=', snap.metadata.fromCache);
       setProducts(fsData);
       localStorage.setItem('label_products', JSON.stringify(fsData));
     });
@@ -659,6 +666,22 @@ export default function App({ user }) {
     }
     saveProductsEverywhere(products);
   }, [products]);
+
+  // [임시 디버그] 서버 값을 강제로(캐시 무시) 확인
+  useEffect(() => {
+    window.__diag = async () => {
+      const mod = await import('firebase/firestore');
+      const s = await mod.getDocFromServer(doc(db, 'settings', 'products'));
+      const list = s.data()?.list || [];
+      const p = list.find(x => x.name && x.name.includes('OGST1905'));
+      return { updatedAt: s.data()?.updatedAt, ogst: (p?.bom || []).map(b => b.careInfo?.code).filter(Boolean) };
+    };
+    window.__diagMeta = async () => {
+      const mod = await import('firebase/firestore');
+      const rd = async (n) => { const s = await mod.getDocFromServer(doc(db, 'settings', n)); const d = s.data() || {}; return { chunked: !!d.chunked, chunkCount: d.chunkCount, hasList: Array.isArray(d.list), listLen: Array.isArray(d.list) ? d.list.length : null, updatedAt: d.updatedAt }; };
+      return { stockLogs: await rd('stockLogs'), savedOrders: await rd('savedOrders'), products: await rd('products') };
+    };
+  }, []);
 
 
   // 이미지 미리보기 모달 상태

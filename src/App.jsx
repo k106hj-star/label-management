@@ -1221,7 +1221,8 @@ export default function App({ user }) {
           if (!isFactory) newLbl.stock = Number(lbl.stock || 0) - deductQty; // 본사납품만 본사재고 차감
           if (_applyFactory) {
             const fstock = { ...(lbl.factoryStock || {}) };
-            fstock[_factory] = Number(fstock[_factory] || 0) + deductQty; // 공장 재고 증가
+            const e = _fsEntry(fstock[_factory]);
+            fstock[_factory] = { received: e.received + deductQty, used: e.used }; // 입고 증가
             newLbl.factoryStock = fstock;
           }
           return newLbl;
@@ -1297,7 +1298,8 @@ export default function App({ user }) {
           if (!isFactory) newLbl.stock = Number(lbl.stock || 0) + restoreQty; // 본사납품만 본사재고 복원
           if (_applyFactory) {
             const fstock = { ...(lbl.factoryStock || {}) };
-            fstock[_factory] = Number(fstock[_factory] || 0) - restoreQty; // 공장 재고 감소
+            const e = _fsEntry(fstock[_factory]);
+            fstock[_factory] = { received: e.received - restoreQty, used: e.used }; // 입고 취소
             newLbl.factoryStock = fstock;
           }
           return newLbl;
@@ -1965,6 +1967,13 @@ export default function App({ user }) {
   const [receiveGrid, setReceiveGrid] = useState({});           // { 'color|size': 입고수량 }
   const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
   const _OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
+  // 공장 재고 항목: { received: 입고총량, used: 사용총량 }. 남은(사용가능)=received-used.
+  // (예전 숫자 형식은 입고총량으로 간주)
+  const _fsEntry = (v) => {
+    if (v == null) return { received: 0, used: 0 };
+    if (typeof v === 'number') return { received: v, used: 0 };
+    return { received: Number(v.received || 0), used: Number(v.used || 0) };
+  };
   // 발주로부터 색상/사이즈 그리드 구성 (신규 발주는 sizeBreakdown, 기존 발주는 사이즈라벨에서 복원)
   const getOrderGrid = (order) => {
     if (!order) return { colors: [], sizes: [], orderedMap: {}, hasColor: false };
@@ -2028,7 +2037,8 @@ export default function App({ user }) {
           const consume = consumeMap[lbl.id];
           if (!consume) return lbl;
           const fstock = { ...(lbl.factoryStock || {}) };
-          fstock[factory] = Number(fstock[factory] || 0) - consume;
+          const e = _fsEntry(fstock[factory]);
+          fstock[factory] = { received: e.received, used: e.used + consume }; // 사용 증가
           return { ...lbl, factoryStock: fstock };
         });
         finalLabels = JSON.parse(JSON.stringify(updated));
@@ -3582,7 +3592,7 @@ export default function App({ user }) {
                   </div>
                   {(() => {
                     const f = factoryStockTab || factoryList[0];
-                    const rows = labels.map(l => ({ l, qty: Number((l.factoryStock || {})[f] || 0) })).filter(r => r.qty !== 0).sort((a, b) => b.qty - a.qty);
+                    const rows = labels.map(l => { const e = _fsEntry((l.factoryStock || {})[f]); return { l, received: e.received, used: e.used, remain: e.received - e.used }; }).filter(r => r.received !== 0 || r.used !== 0).sort((a, b) => b.remain - a.remain);
                     return (
                       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">{f} — {rows.length}종 보유</div>
@@ -3591,16 +3601,25 @@ export default function App({ user }) {
                         ) : (
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead><tr className="text-left text-slate-500 border-b border-slate-100">
-                                <th className="p-3 font-medium whitespace-nowrap">라벨명</th><th className="p-3 font-medium whitespace-nowrap">품번</th><th className="p-3 font-medium whitespace-nowrap">사이즈</th><th className="p-3 font-medium text-right whitespace-nowrap">보유 수량</th>
-                              </tr></thead>
+                              <thead>
+                                <tr className="text-left text-slate-500 border-b border-slate-100 bg-slate-50/50">
+                                  <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
+                                  <th className="p-3 font-medium whitespace-nowrap">품번</th>
+                                  <th className="p-3 font-medium whitespace-nowrap">사이즈</th>
+                                  <th className="p-3 font-medium text-right whitespace-nowrap">입고 수량</th>
+                                  <th className="p-3 font-medium text-right whitespace-nowrap">사용 수량</th>
+                                  <th className="p-3 font-medium text-right whitespace-nowrap text-teal-700">사용가능(남은)</th>
+                                </tr>
+                              </thead>
                               <tbody>
-                                {rows.map(({ l, qty }) => (
+                                {rows.map(({ l, received, used, remain }) => (
                                   <tr key={l.id} className="border-b border-slate-50 hover:bg-slate-50">
                                     <td className="p-3 font-medium text-slate-800">{l.name}</td>
                                     <td className="p-3 text-slate-500">{l.code || '-'}</td>
                                     <td className="p-3 text-slate-500">{l.size || '-'}</td>
-                                    <td className={`p-3 text-right font-bold ${qty < 0 ? 'text-red-500' : 'text-teal-700'}`}>{qty.toLocaleString()}장</td>
+                                    <td className="p-3 text-right text-slate-600">{received.toLocaleString()}</td>
+                                    <td className="p-3 text-right text-slate-500">{used.toLocaleString()}</td>
+                                    <td className={`p-3 text-right font-bold ${remain < 0 ? 'text-red-500' : 'text-teal-700'}`}>{remain.toLocaleString()}장</td>
                                   </tr>
                                 ))}
                               </tbody>

@@ -603,7 +603,9 @@ export default function App({ user }) {
     try { localStorage.setItem('label_products', JSON.stringify(data)); } catch(e) { console.error('[products] localStorage 저장 실패:', e); }
     try {
       const clean = JSON.parse(JSON.stringify(data));
-      if (productsLastWriteJson.current !== undefined) productsLastWriteJson.current = JSON.stringify(clean);
+      const json = JSON.stringify(clean);
+      if (json === productsLastWriteJson.current) return; // 변경 없음 → Firestore/Storage 재쓰기 생략(원격 변경 반영 시 재쓰기 폭주 방지)
+      productsLastWriteJson.current = json;
       setDoc(doc(db, 'settings', 'products'), { list: clean, updatedAt: Date.now() }).catch((e) => console.error('[products] Firestore 저장 실패:', e));
       const jsonBlob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
       const backupRef = ref(storage, 'backups/products-backup.json');
@@ -647,6 +649,7 @@ export default function App({ user }) {
       if (!Array.isArray(fsData)) return;
       const fsJson = JSON.stringify(fsData);
       if (fsJson === productsLastWriteJson.current) return;
+      productsLastWriteJson.current = fsJson; // 원격 반영 후 저장 effect의 재쓰기 방지
       setProducts(fsData);
       localStorage.setItem('label_products', JSON.stringify(fsData));
     });
@@ -2019,6 +2022,7 @@ export default function App({ user }) {
     return { colors: [''], sizes, orderedMap, hasColor: false };
   };
   const processUsage = async (mode = 'use') => {   // mode: 'use'=사용 처리(차감), 'undo'=처리 취소(복구)
+    if (transactionInProgress.current) return; // 다른 재고 처리 진행 중 → 연타/중복 처리 방지
     const isUndo = mode === 'undo';
     const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));
     if (!order) return alert('발주를 선택하세요.');
@@ -2062,7 +2066,9 @@ export default function App({ user }) {
           if (!consume) return lbl;
           const fstock = { ...(lbl.factoryStock || {}) };
           const e = _fsEntry(fstock[factory]);
-          fstock[factory] = { received: e.received, used: isUndo ? e.used - consume : e.used + consume };
+          // 사용량은 항상 0 ~ 입고량 범위로 제한 (연타/오입력으로 음수·초과 → 유령 재고 방지)
+          const nextUsed = Math.max(0, Math.min(Number(e.received || 0), (isUndo ? e.used - consume : e.used + consume)));
+          fstock[factory] = { received: e.received, used: nextUsed };
           return { ...lbl, factoryStock: fstock };
         });
         finalLabels = JSON.parse(JSON.stringify(updated));
@@ -2281,7 +2287,7 @@ export default function App({ user }) {
       };
       // 품번 범위 압축: ['JMSL001-2','JMSL001-3','JMSL001-4','JMSL001-5'] → 'JMSL001-2~5'
       const condenseCodeRange = (codes) => {
-        const unique = [...new Set(codes.filter(Boolean))].sort();
+        const unique = [...new Set(codes.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })); // 숫자 인식 정렬(-2~-12 뒤섞임 방지)
         if (unique.length === 0) return '-';
         if (unique.length === 1) return unique[0];
         const first = unique[0];
@@ -4527,8 +4533,12 @@ export default function App({ user }) {
                     <label className="flex items-center gap-1 text-xs text-slate-500">제조년월 <input value={viewOrderEdits.mfgDate || ''} onChange={e => setViewOrderEdits(p => ({ ...p, mfgDate: e.target.value }))} placeholder="예: 2025.03" className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
                     <label className="flex items-center gap-1 text-xs text-slate-500">RN넘버 <input value={viewOrderEdits.rnNumber || ''} onChange={e => setViewOrderEdits(p => ({ ...p, rnNumber: e.target.value }))} placeholder="RN넘버" className="border border-slate-300 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-1 focus:ring-orange-300" /></label>
                     <button onClick={() => {
-                      const newDetails = (viewOrderEdits.details || viewOrder.details || []).map(({ _globalIdx, ...rest }) => rest);
-                      const newTotalCost = newDetails.reduce((s, d) => s + (d.shortage > 0 ? (d.cost || 0) : 0), 0);
+                      // 발주수량(shortage) 편집 시 단가 기준으로 비용 재계산 (기존엔 옛 cost를 써서 총비용이 틀렸음)
+                      const newDetails = (viewOrderEdits.details || viewOrder.details || []).map(({ _globalIdx, ...rest }) => {
+                        const sh = Number(rest.shortage) || 0;
+                        return { ...rest, cost: sh > 0 ? sh * (Number(rest.price) || 0) : 0 };
+                      });
+                      const newTotalCost = newDetails.reduce((s, d) => s + (d.cost || 0), 0);
                       const updated = { ...viewOrder, orderer: viewOrderEdits.orderer, factory: viewOrderEdits.factory, note: viewOrderEdits.note, mfgDate: viewOrderEdits.mfgDate, rnNumber: viewOrderEdits.rnNumber, details: newDetails, totalCost: newTotalCost };
                       const orderEditFieldLabels = { orderer: '발주자', factory: '공장', note: '특이사항', mfgDate: '제조년월', rnNumber: 'RN넘버' };
                       const orderChanges = Object.keys(orderEditFieldLabels).filter(k => String(viewOrder[k] ?? '') !== String(viewOrderEdits[k] ?? '')).map(k => ({ field: orderEditFieldLabels[k], before: viewOrder[k], after: viewOrderEdits[k] }));

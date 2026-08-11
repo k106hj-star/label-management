@@ -2176,6 +2176,7 @@ export default function App({ user }) {
       const MARGIN = 8;
 
       let isFirstPage = true;
+      const pageImages = []; // 미리보기용 페이지 이미지 (PDF 뷰어 플러그인 없이 직접 표시)
 
       // 품번 앞자리(베이스) 추출: 'JMSL001-2' → 'JMSL001', 'JMHT001' → 'JMHT001'
       const getCodeBase = (code) => {
@@ -2336,6 +2337,7 @@ export default function App({ user }) {
           sliceCanvas.getContext('2d').drawImage(canvas, 0, -yPx);
 
           const sliceData = sliceCanvas.toDataURL('image/jpeg', 0.75);
+          pageImages.push(sliceData); // 미리보기용
           const displayH = sliceH / pxPerMm;
           doc.addImage(sliceData, 'JPEG', MARGIN, MARGIN, contentW, displayH);
           yPx += pageCanvasPx;
@@ -2354,7 +2356,7 @@ export default function App({ user }) {
       const filename = `${filenameParts.join('_')}.pdf`;
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
-      setPdfPreview({ url, filename });
+      setPdfPreview({ url, filename, images: pageImages });
     } catch(e) { alert('PDF 생성 중 오류가 발생했습니다: ' + e.message); console.error(e); }
     finally { setPdfLoading(false); }
   };
@@ -4612,13 +4614,28 @@ export default function App({ user }) {
                 <button onClick={() => { URL.revokeObjectURL(pdfPreview.url); setPdfPreview(null); }} className="text-slate-400 hover:text-red-500 p-1"><X size={20} /></button>
               </div>
             </div>
-            {/* PDF 미리보기 — embed가 가장 안정적 */}
-            <embed
-              src={pdfPreview.url + '#toolbar=1&navpanes=0'}
-              type="application/pdf"
-              className="flex-1 w-full rounded-b-xl"
-              style={{ border: 'none' }}
-            />
+            {/* PDF 미리보기 — 브라우저 PDF 뷰어(embed/iframe)가 일부 환경에서 검게 렌더링되는
+                문제가 있어, 생성 시 만들어 둔 페이지 이미지를 직접 표시한다. (다운로드/새 탭 열기는 실제 PDF 사용) */}
+            {pdfPreview.images && pdfPreview.images.length > 0 ? (
+              <div className="flex-1 overflow-auto bg-slate-100 rounded-b-xl p-4 flex flex-col items-center gap-4">
+                {pdfPreview.images.map((src, i) => (
+                  <img
+                    key={i}
+                    src={src}
+                    alt={`${i + 1}페이지`}
+                    className="bg-white shadow-md"
+                    style={{ width: '100%', maxWidth: '1100px', height: 'auto', display: 'block' }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <embed
+                src={pdfPreview.url + '#toolbar=1&navpanes=0'}
+                type="application/pdf"
+                className="flex-1 w-full rounded-b-xl"
+                style={{ border: 'none' }}
+              />
+            )}
           </div>
         </div>
       )}

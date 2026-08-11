@@ -1875,6 +1875,69 @@ export default function App({ user }) {
     if (editingOrdererIdx === idx) setEditingOrdererIdx(null);
     setConfirmDeleteOrdererIdx(null);
   };
+
+  // ── 공장명 목록 (발주자와 동일한 방식: 드롭다운 + 편집 모달) ──
+  const DEFAULT_FACTORY_LIST = ['케이씨', '서윤', '다산', '정한', '성진', '두성', '베스트', '탱크', '텐', '광진', '대풍사', '보승사'];
+  const [factoryList, setFactoryList] = useState(() => {
+    try { const s = localStorage.getItem('label_factories'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a; } } catch(e) {}
+    return DEFAULT_FACTORY_LIST;
+  });
+  const [showFactoryManage, setShowFactoryManage] = useState(false);
+  const [newFactoryName, setNewFactoryName] = useState('');
+  const [editingFactoryIdx, setEditingFactoryIdx] = useState(null);
+  const [editingFactoryValue, setEditingFactoryValue] = useState('');
+  const [confirmDeleteFactoryIdx, setConfirmDeleteFactoryIdx] = useState(null);
+  const factoryCanSave = useRef(false);
+  const factoryLastWriteJson = useRef('');
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'factories')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length) {
+        const fs = snap.data().list;
+        setFactoryList(fs);
+        localStorage.setItem('label_factories', JSON.stringify(fs));
+        factoryLastWriteJson.current = JSON.stringify(fs);
+      }
+    }).catch(e => console.error('[factories] 로드 실패:', e)).finally(() => { factoryCanSave.current = true; });
+    const unsub = onSnapshot(doc(db, 'settings', 'factories'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fs = snap.data().list;
+      if (!Array.isArray(fs)) return;
+      const fsJson = JSON.stringify(fs);
+      if (fsJson === factoryLastWriteJson.current) return;
+      factoryLastWriteJson.current = fsJson;
+      setFactoryList(fs);
+      localStorage.setItem('label_factories', JSON.stringify(fs));
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    const json = JSON.stringify(factoryList);
+    try { localStorage.setItem('label_factories', json); } catch(e) {}
+    if (!factoryCanSave.current) return;
+    if (json === factoryLastWriteJson.current) return;
+    factoryLastWriteJson.current = json;
+    setDoc(doc(db, 'settings', 'factories'), { list: factoryList }).catch(e => console.error('[factories] 저장 실패:', e));
+  }, [factoryList]);
+  const addFactory = () => {
+    const n = newFactoryName.trim();
+    if (!n) return;
+    if (factoryList.includes(n)) { alert('이미 있는 공장입니다.'); return; }
+    setFactoryList(prev => [...prev, n]);
+    setNewFactoryName('');
+  };
+  const saveEditFactory = () => {
+    const n = editingFactoryValue.trim();
+    if (!n) return;
+    if (factoryList.some((x, i) => x === n && i !== editingFactoryIdx)) { alert('이미 있는 공장입니다.'); return; }
+    setFactoryList(prev => prev.map((x, i) => i === editingFactoryIdx ? n : x));
+    setEditingFactoryIdx(null); setEditingFactoryValue('');
+  };
+  const deleteFactory = (idx) => {
+    setFactoryList(prev => prev.filter((_, i) => i !== idx));
+    if (editingFactoryIdx === idx) setEditingFactoryIdx(null);
+    setConfirmDeleteFactoryIdx(null);
+  };
+
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
   const [calcRnNumber, setCalcRnNumber] = useState('');
@@ -3639,7 +3702,18 @@ export default function App({ user }) {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">공장명</label>
-                  <input type="text" value={calcFactory} onChange={e => setCalcFactory(e.target.value)} placeholder="공장명 입력" className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <select
+                    value={calcFactory}
+                    onChange={e => {
+                      if (e.target.value === '__manage__') { setShowFactoryManage(true); return; }
+                      setCalcFactory(e.target.value);
+                    }}
+                    className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                  >
+                    <option value="">-- 선택 --</option>
+                    {factoryList.map(n => <option key={n} value={n}>{n}</option>)}
+                    <option value="__manage__">✏️ 편집 (추가·수정·삭제)</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">발주자</label>
@@ -5251,6 +5325,51 @@ export default function App({ user }) {
                 ))}
               </div>
               <p className="text-xs text-slate-400 mt-4">여기서 추가·수정·삭제한 발주자 목록은 모든 컴퓨터에 공유됩니다.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 공장명 관리 모달 */}
+      {showFactoryManage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setShowFactoryManage(false); setEditingFactoryIdx(null); setConfirmDeleteFactoryIdx(null); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">공장명 관리</h3>
+              <button onClick={() => { setShowFactoryManage(false); setEditingFactoryIdx(null); setConfirmDeleteFactoryIdx(null); }} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              <div className="flex gap-2 mb-4">
+                <input value={newFactoryName} onChange={e => setNewFactoryName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addFactory(); }} placeholder="새 공장명 추가" className="flex-1 p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <button onClick={addFactory} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 whitespace-nowrap">추가</button>
+              </div>
+              <div className="space-y-2">
+                {factoryList.length === 0 && <p className="text-center text-slate-400 text-sm py-6">등록된 공장이 없습니다.</p>}
+                {factoryList.map((name, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg">
+                    {editingFactoryIdx === idx ? (
+                      <>
+                        <input value={editingFactoryValue} onChange={e => setEditingFactoryValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditFactory(); if (e.key === 'Escape') setEditingFactoryIdx(null); }} autoFocus className="flex-1 p-1.5 border border-emerald-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        <button onClick={saveEditFactory} className="px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-medium">저장</button>
+                        <button onClick={() => setEditingFactoryIdx(null)} className="px-2.5 py-1 text-slate-500 border border-slate-200 rounded text-xs">취소</button>
+                      </>
+                    ) : confirmDeleteFactoryIdx === idx ? (
+                      <>
+                        <span className="flex-1 text-sm text-red-600 px-1 font-medium">삭제할까요?</span>
+                        <button onClick={() => deleteFactory(idx)} className="px-2.5 py-1 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600">삭제</button>
+                        <button onClick={() => setConfirmDeleteFactoryIdx(null)} className="px-2.5 py-1 text-slate-500 border border-slate-200 rounded text-xs">취소</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm text-slate-700 px-1">{name}</span>
+                        <button onClick={() => { setEditingFactoryIdx(idx); setEditingFactoryValue(name); setConfirmDeleteFactoryIdx(null); }} className="px-2.5 py-1 text-slate-600 border border-slate-200 rounded text-xs hover:bg-slate-50">수정</button>
+                        <button onClick={() => { setConfirmDeleteFactoryIdx(idx); setEditingFactoryIdx(null); }} className="px-2.5 py-1 text-red-500 border border-red-200 rounded text-xs hover:bg-red-50">삭제</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-4">여기서 추가·수정·삭제한 공장 목록은 모든 컴퓨터에 공유됩니다.</p>
             </div>
           </div>
         </div>

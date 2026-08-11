@@ -1172,11 +1172,8 @@ export default function App({ user }) {
     // 공장납품 라벨은 트랜잭션 내부에서 본사재고 차감 제외 처리됨
     const orderItems = (order.details || []).filter(d => Number(d.needQty || d.shortage || 0) > 0);
     if (orderItems.length === 0) { alert('발주 수량이 없습니다.'); return; }
-    const confirmMsg = `발주 확정 시 본사재고에서 다음 수량이 차감됩니다:\n${orderItems.map(d => {
-      const qty = Number(d.needQty || d.shortage || 0);
-      return `• ${d.labelName || d.name} (${d.size}): ${qty.toLocaleString()}개${d.shortage > 0 ? ` [발주필요 ${d.shortage.toLocaleString()}개]` : ''}`;
-    }).join('\n')}\n\n진행하시겠습니까?`;
-    if (!window.confirm(confirmMsg)) return;
+    // 확정 즉시 진행 → 성공 시 '확정되었습니다' 앱 내부 알림창 표시(window.confirm은 브라우저 차단 시 무시되어 확정이 안 되던 문제).
+    // 잘못 눌러도 '확정 취소' 버튼으로 되돌릴 수 있음.
     const appliedAt = new Date().toLocaleString('ko-KR');
     const _uid = user?.email ? user.email.split('@')[0] : '';
     const _name = currentUserName || user?.displayName || '';

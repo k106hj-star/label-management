@@ -4552,8 +4552,8 @@ export default function App({ user }) {
                               <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                               <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">필요수량</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주필요</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-blue-50 text-blue-600">본사수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
                               <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                             </tr>
                           </thead>
@@ -4591,8 +4591,8 @@ export default function App({ user }) {
                                 </td>
                                 <td className="p-3 text-slate-700">{viewOrder.productName || '-'}</td>
                                 <td className="p-3 text-center text-slate-700 text-base font-bold">{d.size || '-'}</td>
-                                <td className="p-3 text-right font-bold text-slate-700">
-                                  {Number(d.needQty || d.shortage || 0).toLocaleString()}개
+                                <td className="p-3 text-right font-bold text-blue-700">
+                                  {Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}개
                                 </td>
                                 <td className="p-3 text-right font-bold">
                                   {viewOrderEditMode
@@ -4607,7 +4607,11 @@ export default function App({ user }) {
                                         })}
                                         className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300"
                                       />
-                                    : <span className={d.shortage > 0 ? 'text-red-600' : 'text-emerald-600'}>{d.shortage > 0 ? `${d.shortage.toLocaleString()}개` : '-'}</span>
+                                    : (() => {
+                                        const isVendor = key !== '본사';
+                                        const orderQty = isVendor ? Number(d.shortage || 0) : Math.min(Number(d.needQty || 0), Number(d.availableStock || 0));
+                                        return <span className={isVendor ? 'text-red-600' : 'text-slate-800'}>{orderQty > 0 ? `${orderQty.toLocaleString()}개` : '-'}</span>;
+                                      })()
                                   }
                                 </td>
                                 <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrderEditMode ? (viewOrderEdits.note || '-') : (viewOrder.note || '-')}</td>

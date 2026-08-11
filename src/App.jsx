@@ -1956,22 +1956,65 @@ export default function App({ user }) {
     setConfirmDeleteFactoryIdx(null);
   };
 
-  // ── 공장별 재고 화면 상태 & 제품 입고(라벨 차감) ──
-  const [factoryStockTab, setFactoryStockTab] = useState('');      // 선택된 공장 (보유 현황)
-  const [receiveFactory, setReceiveFactory] = useState('');
-  const [receiveProductId, setReceiveProductId] = useState('');
-  const [receiveQty, setReceiveQty] = useState('');
-  const receiveProductToFactory = async () => {
-    const factory = receiveFactory;
-    const pid = parseInt(receiveProductId);
-    const qty = parseInt(receiveQty);
-    if (!factory) return alert('공장을 선택하세요.');
-    if (!pid) return alert('상품을 선택하세요.');
-    if (!Number.isFinite(qty) || qty <= 0) return alert('입고 수량을 올바르게 입력하세요.');
-    const product = products.find(p => p.id === pid);
-    if (!product || !(product.bom || []).length) return alert('소요 라벨(BOM)이 설정된 상품이 아닙니다.');
-    const bomLabels = (product.bom || []).map(b => { const l = labels.find(x => x.id === b.labelId); return { name: l ? `${l.name}${l.size ? ' (' + l.size + ')' : ''}` : String(b.labelId), qtyPer: Number(b.qtyPerUnit || 1) }; });
-    if (!window.confirm(`'${factory}'에서 '${product.name}' ${qty.toLocaleString()}개 입고 처리합니다.\n\n다음 라벨이 공장 재고에서 차감됩니다:\n${bomLabels.map(b => `• ${b.name}: ${(b.qtyPer * qty).toLocaleString()}장`).join('\n')}\n\n진행할까요?`)) return;
+  // ── 공장별 재고 화면 상태 & 제품 입고(발주 기준, 색상×사이즈 그리드) ──
+  const [factoryStockTab, setFactoryStockTab] = useState('');   // 선택된 공장 (보유 현황)
+  const [receiveOrderId, setReceiveOrderId] = useState('');     // 입고 처리할 발주(주문) id
+  const [receiveGrid, setReceiveGrid] = useState({});           // { 'color|size': 입고수량 }
+  const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
+  const _OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
+  // 발주로부터 색상/사이즈 그리드 구성 (신규 발주는 sizeBreakdown, 기존 발주는 사이즈라벨에서 복원)
+  const getOrderGrid = (order) => {
+    if (!order) return { colors: [], sizes: [], orderedMap: {}, hasColor: false };
+    const sb = order.sizeBreakdown || [];
+    if (sb.length) {
+      const colors = [...new Set(sb.map(r => r.color))];
+      const sizes = [...new Set(sb.map(r => r.size))];
+      const orderedMap = {};
+      sb.forEach(r => { orderedMap[`${r.color}|${r.size}`] = Number(r.qty || 0); });
+      return { colors, sizes, orderedMap, hasColor: true };
+    }
+    // 기존 발주(색상 정보 없음): 사이즈 전용 라벨의 needQty로 사이즈별 발주수량 복원
+    const bySize = {};
+    (order.details || []).forEach(d => {
+      const s = _normSize(d.size);
+      if (s && !_OS_VALUES.includes(s)) bySize[d.size] = Number(d.needQty || 0);
+    });
+    const sizes = Object.keys(bySize);
+    const orderedMap = {};
+    sizes.forEach(s => { orderedMap[`|${s}`] = bySize[s]; });
+    return { colors: [''], sizes, orderedMap, hasColor: false };
+  };
+  const receiveOrderToFactory = async () => {
+    const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));
+    if (!order) return alert('입고할 발주를 선택하세요.');
+    const factory = (order.factory || '').trim();
+    if (!factory || factory === '-') return alert('이 발주에는 공장이 지정되어 있지 않습니다.');
+    const { colors, sizes, orderedMap } = getOrderGrid(order);
+    // 사이즈별 발주수량 / 입고수량 합계
+    const orderedSizeQty = {}; let totalOrdered = 0;
+    const receivedSizeQty = {}; let totalReceived = 0;
+    colors.forEach(c => sizes.forEach(s => {
+      const ord = Number(orderedMap[`${c}|${s}`] || 0);
+      const rec = parseInt(receiveGrid[`${c}|${s}`]) || 0;
+      const k = _normSize(s);
+      orderedSizeQty[k] = (orderedSizeQty[k] || 0) + ord;
+      totalOrdered += ord;
+      if (rec > 0) { receivedSizeQty[k] = (receivedSizeQty[k] || 0) + rec; totalReceived += rec; }
+    }));
+    if (totalReceived <= 0) return alert('입고 수량을 1개 이상 입력하세요.');
+    // 라벨별 차감량(비율 기준): 사이즈 전용은 해당 사이즈 비율, 공통(OS)은 전체 비율
+    const consumeMap = {}; const summary = [];
+    (order.details || []).forEach(d => {
+      const s = _normSize(d.size);
+      const isSizeSpecific = s && !_OS_VALUES.includes(s);
+      let ratio;
+      if (isSizeSpecific) { const ord = orderedSizeQty[s] || 0; ratio = ord > 0 ? (receivedSizeQty[s] || 0) / ord : 0; }
+      else { ratio = totalOrdered > 0 ? totalReceived / totalOrdered : 0; }
+      const consume = Math.round(Number(d.needQty || 0) * ratio);
+      if (consume > 0) { consumeMap[d.id] = (consumeMap[d.id] || 0) + consume; summary.push(`• ${d.name}${d.size ? ' (' + d.size + ')' : ''}: ${consume.toLocaleString()}장`); }
+    });
+    if (!Object.keys(consumeMap).length) return alert('차감할 라벨이 없습니다.');
+    if (!window.confirm(`'${factory}'에 '${order.productName}' 입고 처리합니다.\n총 입고 제품: ${totalReceived.toLocaleString()}개\n\n공장 재고에서 차감될 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
     transactionInProgress.current = true;
     try {
       let finalLabels = [];
@@ -1979,9 +2022,8 @@ export default function App({ user }) {
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsLabels = labelsSnap.data()?.list || [];
         const updated = fsLabels.map(lbl => {
-          const bomItem = (product.bom || []).find(b => b.labelId === lbl.id);
-          if (!bomItem) return lbl;
-          const consume = qty * Number(bomItem.qtyPerUnit || 1);
+          const consume = consumeMap[lbl.id];
+          if (!consume) return lbl;
           const fstock = { ...(lbl.factoryStock || {}) };
           fstock[factory] = Number(fstock[factory] || 0) - consume;
           return { ...lbl, factoryStock: fstock };
@@ -1990,11 +2032,11 @@ export default function App({ user }) {
         tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
       });
       setLabels(finalLabels);
-      addLog({ type: 'factory_receive', factory, productName: product.name, qty, summary: `제품 입고: ${product.name} ${qty}개 · ${factory} 라벨 차감` });
+      addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: `제품 입고: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
       alert(`입고 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
-      setReceiveQty('');
+      setReceiveGrid({});
     } catch(e) {
-      console.error('[receiveProduct] 실패:', e);
+      console.error('[receiveOrder] 실패:', e);
       alert('입고 처리 중 오류: ' + e.message);
     } finally {
       transactionInProgress.current = false;
@@ -3433,31 +3475,58 @@ export default function App({ user }) {
               <p className="text-sm text-slate-500 mt-1">발주를 확정하면 해당 공장에 라벨이 입고되고, 제품 입고를 처리하면 라벨이 차감됩니다.</p>
             </div>
 
-            {/* 제품 입고 (라벨 차감) */}
+            {/* 제품 입고 (발주 기준, 색상×사이즈) */}
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-5">
               <h3 className="text-sm font-bold text-teal-900 mb-3">📥 제품 입고 (라벨 차감)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">공장</label>
-                  <select value={receiveFactory} onChange={e => setReceiveFactory(e.target.value)} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">-- 선택 --</option>
-                    {factoryList.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">상품</label>
-                  <select value={receiveProductId} onChange={e => setReceiveProductId(e.target.value)} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
-                    <option value="">-- 선택 --</option>
-                    {products.filter(p => (p.bom || []).length > 0).map(p => <option key={p.id} value={p.id}>[{p.brand}] {p.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">입고 수량(제품)</label>
-                  <input type="number" value={receiveQty} onChange={e => setReceiveQty(e.target.value)} placeholder="0" className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">입고할 발주 선택 (확정된 발주만)</label>
+                <select value={receiveOrderId} onChange={e => { setReceiveOrderId(e.target.value); setReceiveGrid({}); }} className="w-full p-2.5 border border-teal-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                  <option value="">-- 발주 선택 --</option>
+                  {savedOrders.filter(o => o.applied && o.factory && o.factory !== '-').map(o => (
+                    <option key={o.id} value={o.id}>[{o.factory}] {o.productName || '(미선택)'} · {o.date}</option>
+                  ))}
+                </select>
               </div>
+              {receiveOrderId && (() => {
+                const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));
+                if (!order) return null;
+                const { colors, sizes, orderedMap, hasColor } = getOrderGrid(order);
+                if (!sizes.length) return <p className="mt-3 text-sm text-amber-600">이 발주는 사이즈 정보가 없어 그리드 입고를 할 수 없습니다.</p>;
+                return (
+                  <div className="mt-4">
+                    <p className="text-xs text-slate-500 mb-2">각 칸: <span className="text-slate-400">회색=발주수량</span> / 입력칸=입고수량. {!hasColor && '(기능 추가 이전 발주라 사이즈별로만 표시됩니다)'}</p>
+                    <div className="overflow-x-auto bg-white rounded-lg border border-teal-200">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-teal-50/60 border-b border-teal-100">
+                            <th className="p-2.5 text-left font-medium text-slate-600 whitespace-nowrap">색상 ＼ 사이즈</th>
+                            {sizes.map(s => <th key={s} className="p-2.5 text-center font-medium text-slate-600 whitespace-nowrap">{s}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {colors.map(c => (
+                            <tr key={c} className="border-b border-slate-50">
+                              <td className="p-2.5 font-medium text-slate-700 whitespace-nowrap">{c || '-'}</td>
+                              {sizes.map(s => {
+                                const ord = orderedMap[`${c}|${s}`];
+                                if (ord === undefined) return <td key={s} className="p-2.5 text-center text-slate-300">·</td>;
+                                return (
+                                  <td key={s} className="p-2 text-center">
+                                    <div className="text-[11px] text-slate-400 mb-0.5">발주 {ord.toLocaleString()}</div>
+                                    <input type="number" value={receiveGrid[`${c}|${s}`] || ''} onChange={e => setReceiveGrid(p => ({ ...p, [`${c}|${s}`]: e.target.value }))} placeholder="0" className="w-16 p-1 border border-teal-200 rounded text-center text-sm focus:outline-none focus:ring-1 focus:ring-teal-500" />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="mt-3 flex justify-end">
-                <button onClick={receiveProductToFactory} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-bold shadow-sm">입고 처리 (라벨 차감)</button>
+                <button onClick={receiveOrderToFactory} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">입고 처리 (라벨 차감)</button>
               </div>
             </div>
 
@@ -4140,6 +4209,7 @@ export default function App({ user }) {
                         totalCost: calcResult.totalCost,
                         totalQty: calcResult.details.reduce((s, d) => s + d.needQty, 0),
                         details: calcResult.details,
+                        sizeBreakdown: calcResult.sizeBreakdown,  // [{color,size,qty}] — 공장 입고 시 색상/사이즈 비교용
                       };
                       setSavedOrders(prev => [order, ...prev]);
                       addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });

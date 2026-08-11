@@ -2043,8 +2043,8 @@ export default function App({ user }) {
       if (consume > 0) { consumeMap[d.id] = (consumeMap[d.id] || 0) + consume; summary.push(`• ${d.name}${d.size ? ' (' + d.size + ')' : ''}: ${consume.toLocaleString()}장`); }
     });
     if (!Object.keys(consumeMap).length) return alert('처리할 라벨이 없습니다.');
-    const actionLabel = isUndo ? '처리 취소(사용 수량 복구)' : '사용 처리(라벨 차감)';
-    if (!window.confirm(`'${factory}' · '${order.productName}' ${actionLabel}합니다.\n총 제품 수량: ${totalReceived.toLocaleString()}개\n\n대상 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
+    // 확인창(window.confirm)은 브라우저 차단 시 무시되므로 바로 진행 → 성공 시 앱 내부 알림창.
+    // 잘못 눌러도 '처리 취소'로 복구 가능.
     transactionInProgress.current = true;
     try {
       let finalLabels = [];
@@ -2064,8 +2064,12 @@ export default function App({ user }) {
       });
       setLabels(finalLabels);
       addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: isUndo ? `사용 처리 취소: ${order.productName} ${totalReceived}개 · ${factory} 사용 수량 복구` : `제품 사용: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
-      alert(isUndo ? `처리 취소 완료 — ${factory}의 사용 수량이 복구되었습니다.` : `사용 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
-      setReceiveGrid({});
+      // 앱 내부 알림창(window.alert 차단 대비) → 닫으면 입력 그리드 초기화(최신화). 보유 현황은 setLabels로 이미 갱신됨.
+      setSavedNotice({
+        title: isUndo ? '처리 취소 완료' : '사용 처리 완료',
+        sub: isUndo ? `${factory}의 사용 수량이 복구되었습니다.` : `${factory}의 라벨 재고가 차감되었습니다.`,
+        onClose: () => setReceiveGrid({}),
+      });
     } catch(e) {
       console.error('[processUsage] 실패:', e);
       alert((isUndo ? '처리 취소' : '사용 처리') + ' 중 오류: ' + e.message);

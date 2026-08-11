@@ -3643,19 +3643,18 @@ export default function App({ user }) {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">발주자</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={calcOrderer}
-                      onChange={e => setCalcOrderer(e.target.value)}
-                      className="flex-1 p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
-                    >
-                      <option value="">-- 선택 --</option>
-                      {ordererList.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <button type="button" onClick={() => setShowOrdererManage(true)} title="발주자 목록 편집" className="px-3 py-2 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-sm whitespace-nowrap flex items-center gap-1">
-                      <Pencil size={14} /> 편집
-                    </button>
-                  </div>
+                  <select
+                    value={calcOrderer}
+                    onChange={e => {
+                      if (e.target.value === '__manage__') { setShowOrdererManage(true); return; }
+                      setCalcOrderer(e.target.value);
+                    }}
+                    className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                  >
+                    <option value="">-- 선택 --</option>
+                    {ordererList.map(n => <option key={n} value={n}>{n}</option>)}
+                    <option value="__manage__">✏️ 편집 (추가·수정·삭제)</option>
+                  </select>
                 </div>
               </div>
               <div>

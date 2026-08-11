@@ -1258,6 +1258,23 @@ export default function App({ user }) {
     if (processingOrderIds.has(order.id)) return; // [C5] 연타 방지
     // [수정] needQty 기준 (applyOrderToStock와 일치)
     const orderItems = (order.details || []).filter(d => Number(d.needQty || d.shortage || 0) > 0);
+    // [사용 처리 후 취소 차단] 확정 취소는 입고분(received)만 되돌리고 사용 수량(used)은 유지하므로,
+    // 이미 '사용 처리'된 발주를 취소하면 received < used 가 되어 공장 재고가 어긋난다.
+    // 취소 후 used가 남은 입고분을 초과하는 라벨이 하나라도 있으면 차단하고, 먼저 '처리 취소'하도록 안내.
+    const _cf = (order.factory || '').trim();
+    if (_cf && _cf !== '-') {
+      const wouldBreak = orderItems.some(d => {
+        const lbl = labels.find(l => l.id === d.id);
+        if (!lbl) return false;
+        const e = _fsEntry((lbl.factoryStock || {})[_cf]);
+        const restoreQty = Number(d.needQty || d.shortage || 0);
+        return (e.received - restoreQty) < e.used;
+      });
+      if (wouldBreak) {
+        setSavedNotice({ danger: true, title: '확정 취소 불가', sub: `이 발주는 이미 '사용 처리'된 라벨이 있어, 지금 확정 취소하면 '${_cf}' 공장 재고의 사용 수량이 어긋납니다.\n\n먼저 [공장별 재고 → 처리 취소]로 사용 수량을 복구한 뒤 확정 취소하세요.` });
+        return;
+      }
+    }
     // 확인창(window.confirm)은 브라우저 차단 시 무시되므로 바로 진행 → 성공 시 앱 내부 알림창.
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';

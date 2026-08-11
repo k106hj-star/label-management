@@ -1850,6 +1850,7 @@ export default function App({ user }) {
   const [calcResetConfirm, setCalcResetConfirm] = useState(false); // 취소(초기화) 인라인 확인
   const [savedNotice, setSavedNotice] = useState(null); // 저장 완료 알림(앱 내부, window.alert 대체) — { sub, onClose } | null
   const [confirmDialog, setConfirmDialog] = useState(null); // 확인 대화상자(window.confirm 대체) — { title?, message, confirmText?, danger?, onConfirm } | null
+  const [savingOrder, setSavingOrder] = useState(false); // 발주 저장(트랜잭션) 진행 중
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -2107,6 +2108,49 @@ export default function App({ user }) {
     setCalcDaebongType('');
     setCalcDaebongQty('');
     setCalcResetConfirm(false);
+  };
+
+  // 발주 저장 — 트랜잭션으로 서버 '최신' 목록에 추가(동시 저장 유실 방지).
+  // 실패(네트워크/과부하) 시 '저장 실패' 알림으로 재시도 유도.
+  const saveCalcOrder = async () => {
+    if (!calcResult || savingOrder) return;
+    const order = {
+      id: Date.now(),
+      date: new Date().toLocaleString('ko-KR'),
+      productName: calcSearchText,
+      factory: calcFactory,
+      orderer: calcOrderer,
+      note: calcNote,
+      mfgDate: calcMfgDate,
+      rnNumber: calcRnNumber,
+      totalCost: calcResult.totalCost,
+      totalQty: calcResult.details.reduce((s, d) => s + d.needQty, 0),
+      details: calcResult.details,
+      sizeBreakdown: calcResult.sizeBreakdown, // [{color,size,qty}] — 공장 입고 시 색상/사이즈 비교용
+    };
+    setSavingOrder(true);
+    transactionInProgress.current = true; // 저장 effect 중복 쓰기 차단
+    try {
+      let finalOrders = [];
+      let ua = null;
+      await runTransaction(db, async (tx) => {
+        // 서버의 '최신' 저장리스트를 읽어 거기에 추가 → 다른 사람이 방금 저장한 발주를 덮어쓰지 않음
+        const read = await readShardedTx(tx, 'savedOrders');
+        finalOrders = [JSON.parse(JSON.stringify(order)), ...read.list];
+        ua = writeShardedTx(tx, 'savedOrders', finalOrders, read.chunkCount);
+      });
+      if (ua) ordersLastUpdatedAt.current = ua;
+      ordersLastWriteJson.current = JSON.stringify(finalOrders); // 저장 effect가 다시 쓰지 않도록
+      setSavedOrders(finalOrders);
+      addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });
+      setSavedNotice({ title: '저장되었습니다', sub: '발주 내용이 저장리스트에 저장되었습니다.', onClose: resetCalcForm });
+    } catch(e) {
+      console.error('[saveCalcOrder] 실패:', e);
+      setSavedNotice({ danger: true, title: '저장 실패', sub: '발주가 저장되지 않았습니다. 네트워크 상태를 확인하고 잠시 후 다시 저장해 주세요.\n(저장리스트에 실제로 있는지 꼭 확인하세요.)' });
+    } finally {
+      transactionInProgress.current = false;
+      setSavingOrder(false);
+    }
   };
   const [calcRnMode, setCalcRnMode] = useState('select');
   const RN_LIST = [
@@ -4323,28 +4367,11 @@ export default function App({ user }) {
                   </div>
                   <div className="flex items-center gap-3">
                   <button
-                    onClick={() => {
-                      const order = {
-                        id: Date.now(),
-                        date: new Date().toLocaleString('ko-KR'),
-                        productName: calcSearchText,
-                        factory: calcFactory,
-                        orderer: calcOrderer,
-                        note: calcNote,
-                        mfgDate: calcMfgDate,
-                        rnNumber: calcRnNumber,
-                        totalCost: calcResult.totalCost,
-                        totalQty: calcResult.details.reduce((s, d) => s + d.needQty, 0),
-                        details: calcResult.details,
-                        sizeBreakdown: calcResult.sizeBreakdown,  // [{color,size,qty}] — 공장 입고 시 색상/사이즈 비교용
-                      };
-                      setSavedOrders(prev => [order, ...prev]);
-                      addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });
-                      setSavedNotice({ sub: '발주 내용이 저장리스트에 저장되었습니다.', onClose: resetCalcForm }); // window.alert은 브라우저 차단 시 안 뜨므로 앱 내부 알림창 사용
-                    }}
-                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
+                    onClick={saveCalcOrder}
+                    disabled={savingOrder}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
                   >
-                    <Save size={18} /> 발주내용 저장
+                    <Save size={18} /> {savingOrder ? '저장 중...' : '발주내용 저장'}
                   </button>
                   {calcResetConfirm ? (
                     // 대화상자(window.confirm)는 브라우저가 차단하면 무시되므로 인라인 확인 사용
@@ -4740,14 +4767,14 @@ export default function App({ user }) {
       {savedNotice && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { const cb = savedNotice.onClose; setSavedNotice(null); cb && cb(); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
-            <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-              <Save size={26} className="text-emerald-600" />
+            <div className={`mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-4 ${savedNotice.danger ? 'bg-red-100' : 'bg-emerald-100'}`}>
+              {savedNotice.danger ? <AlertCircle size={26} className="text-red-600" /> : <Save size={26} className="text-emerald-600" />}
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-1">{savedNotice.title || '저장되었습니다'}</h3>
-            <p className="text-sm text-slate-500 mb-5">{savedNotice.sub || '저장되었습니다.'}</p>
+            <p className="text-sm text-slate-500 mb-5 whitespace-pre-line">{savedNotice.sub || '저장되었습니다.'}</p>
             <button
               onClick={() => { const cb = savedNotice.onClose; setSavedNotice(null); cb && cb(); }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors"
+              className={`w-full text-white px-4 py-3 rounded-lg font-bold shadow transition-colors ${savedNotice.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
             >
               확인
             </button>

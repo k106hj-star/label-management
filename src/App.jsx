@@ -5,7 +5,7 @@ import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import { db, storage, auth } from './firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, runTransaction, updateDoc, deleteField } from 'firebase/firestore';
 import AdminPage from './AdminPage';
 import ManualPage from './ManualPage';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -1005,6 +1005,58 @@ export default function App({ user }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [bomSelection, setBomSelection] = useState({ labelIds: [], qty: 1 });
   const [openProductMenuId, setOpenProductMenuId] = useState(null);
+
+  // ── 상품 편집 잠금(동시 편집 방지) — settings/editLocks: { [productId]: {userId, userName, at} } ──
+  const [editLocks, setEditLocks] = useState({});
+  const LOCK_TTL = 180000; // 3분 무활동 시 잠금 자동 해제(브라우저를 그냥 닫아도 풀림)
+  const lockUserId = user?.email || user?.uid || 'unknown';
+  const lockUserName = currentUserName || user?.displayName || (user?.email ? user.email.split('@')[0] : '사용자');
+  const myProductLockRef = useRef(null); // 현재 내가 잠근 상품 id
+  // 다른 사람이 (만료 안 된) 잠금을 걸고 있으면 그 잠금 정보 반환, 아니면 null
+  const productLockedByOther = (pid) => {
+    const l = editLocks[pid];
+    if (!l || l.userId === lockUserId) return null;
+    if (Date.now() - Number(l.at || 0) > LOCK_TTL) return null; // 만료된 잠금은 무시
+    return l;
+  };
+  const acquireProductLock = (pid) => {
+    if (!pid) return;
+    setDoc(doc(db, 'settings', 'editLocks'), { [pid]: { userId: lockUserId, userName: lockUserName, at: Date.now() } }, { merge: true }).catch(() => {});
+  };
+  const releaseProductLock = (pid) => {
+    if (!pid) return;
+    updateDoc(doc(db, 'settings', 'editLocks'), { [pid]: deleteField() }).catch(() => {});
+  };
+  // 잠금 실시간 동기화
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'editLocks'), (snap) => {
+      setEditLocks(snap.exists() ? (snap.data() || {}) : {});
+    });
+    return () => unsub();
+  }, []);
+  // 상품세팅에서 선택된 상품에 잠금 획득/해제 자동 조율(남이 안 잡고 있을 때만 획득)
+  useEffect(() => {
+    const targetId = (activeTab === 'bom' && selectedProduct) ? selectedProduct.id : null;
+    if (myProductLockRef.current && myProductLockRef.current !== targetId) {
+      releaseProductLock(myProductLockRef.current);
+      myProductLockRef.current = null;
+    }
+    if (targetId && myProductLockRef.current !== targetId && !productLockedByOther(targetId)) {
+      myProductLockRef.current = targetId;
+      acquireProductLock(targetId);
+    }
+  }, [selectedProduct, activeTab, editLocks]);
+  // 편집 중 잠금 갱신(heartbeat) — 무활동 자동해제로 안 풀리게
+  useEffect(() => {
+    const iv = setInterval(() => { if (myProductLockRef.current) acquireProductLock(myProductLockRef.current); }, 60000);
+    return () => clearInterval(iv);
+  }, []);
+  // 탭 닫힘/언마운트 시 best-effort 해제(못 하면 TTL로 자동해제)
+  useEffect(() => {
+    const onUnload = () => { if (myProductLockRef.current) releaseProductLock(myProductLockRef.current); };
+    window.addEventListener('beforeunload', onUnload);
+    return () => { window.removeEventListener('beforeunload', onUnload); if (myProductLockRef.current) releaseProductLock(myProductLockRef.current); };
+  }, []);
   const [editProduct, setEditProduct] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
@@ -3806,6 +3858,7 @@ export default function App({ user }) {
                       <span className="inline-block px-1.5 py-0.5 rounded text-xs font-bold mr-2 bg-slate-100 text-slate-700">{p.brand || '공용'}</span>
                       {p.name}
                     </button>
+                    {(() => { const lk = productLockedByOther(p.id); return lk ? <span className="shrink-0 flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap" title={`${lk.userName}님이 편집 중`}>🔒 {lk.userName}</span> : null; })()}
                     <div className="relative shrink-0">
                       <button onClick={() => setOpenProductMenuId(openProductMenuId === p.id ? null : p.id)} className="text-slate-400 hover:text-slate-600 p-1">
                         <MoreVertical size={14} />
@@ -3898,6 +3951,13 @@ export default function App({ user }) {
                   </h2>
                   <p className="text-sm text-slate-500 mb-6">이 옷을 1벌 만들 때 들어가는 라벨과 수량을 등록해두세요.</p>
 
+                  {(() => { const lk = productLockedByOther(selectedProduct.id); return lk ? (
+                    <div className="mb-6 flex items-center gap-2 bg-amber-50 border border-amber-300 text-amber-800 rounded-lg px-4 py-3 text-sm font-medium">
+                      🔒 지금 <span className="font-bold">{lk.userName}</span>님이 이 상품을 편집 중입니다. 편집이 끝날 때까지 <span className="font-bold">읽기 전용</span>입니다.
+                    </div>
+                  ) : null; })()}
+
+                  <fieldset disabled={!!productLockedByOther(selectedProduct.id)} className="border-0 p-0 m-0 min-w-0 disabled:opacity-60">
                   <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
                     {/* 검색 + 필터 + 수량 + 추가 — 1줄 */}
                     <div className="flex gap-2 items-center mb-3">
@@ -4038,6 +4098,7 @@ export default function App({ user }) {
                       </button>
                     </div>
                   )}
+                  </fieldset>
                 </>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 py-12">

@@ -1241,7 +1241,7 @@ export default function App({ user }) {
       setSavedOrders(finalOrders);
       if (viewOrder?.id === order.id) setViewOrder(prev => ({ ...prev, applied: true, appliedAt }));
       setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), type: 'deduct', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _uid, userName: _name }, ...prev]);
-      alert('발주가 확정되었습니다. 재고에서 발주 수량이 차감되었습니다.');
+      setSavedNotice({ title: '확정되었습니다', sub: '재고에서 발주 수량이 차감되었습니다.', onClose: () => setViewOrder(null) }); // window.alert 차단 대비 앱 내부 알림창 + 닫으면 상세창 닫기
     } catch(e) {
       console.error('[applyOrderToStock] 실패:', e);
       if (e.message === 'already_applied') alert('이미 다른 사용자가 발주 확정했습니다. 새로고침 후 확인하세요.');
@@ -4646,7 +4646,7 @@ export default function App({ user }) {
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
               <Save size={26} className="text-emerald-600" />
             </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-1">저장되었습니다</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">{savedNotice.title || '저장되었습니다'}</h3>
             <p className="text-sm text-slate-500 mb-5">{savedNotice.sub || '저장되었습니다.'}</p>
             <button
               onClick={() => { const cb = savedNotice.onClose; setSavedNotice(null); cb && cb(); }}

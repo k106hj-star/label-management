@@ -562,6 +562,7 @@ export default function App({ user }) {
       if (fsJson === labelsLastWriteJson.current) return; // 내 쓰기 확정 스킵
       setLabels(fsData);
       localStorage.setItem('label_inventory', JSON.stringify(fsData));
+      labelsLastWriteJson.current = fsJson; // 원격 반영 후 중복 재저장 방지
     });
     return () => unsub();
   }, []);
@@ -576,7 +577,9 @@ export default function App({ user }) {
     try {
       const clean = JSON.parse(JSON.stringify(labelsPendingRef.current));
       labelsPendingRef.current = null;
-      labelsLastWriteJson.current = JSON.stringify(clean);
+      const json = JSON.stringify(clean);
+      if (json === labelsLastWriteJson.current) return; // 변경 없음 → 불필요한 쓰기 생략
+      labelsLastWriteJson.current = json;
       setDoc(doc(db, 'settings', 'labels'), { list: clean }).catch((e) => console.error('[labels] 저장 실패:', e));
     } catch(e) { console.error('[labels] 저장 직렬화 실패:', e); }
   };
@@ -1345,6 +1348,7 @@ export default function App({ user }) {
         setSavedOrders(list);
         localStorage.setItem('label_saved_orders', JSON.stringify(list));
         ordersLastUpdatedAt.current = updatedAt;
+        ordersLastWriteJson.current = JSON.stringify(list); // 로드 직후 저장 effect의 중복 재저장 방지
       } else {
         // Firestore가 비어있을 때만 localStorage를 업로드 (최초 복구용)
         const localRaw = localStorage.getItem('label_saved_orders');
@@ -1372,6 +1376,7 @@ export default function App({ user }) {
         if (!Array.isArray(fsData)) return;
         setSavedOrders(fsData);
         localStorage.setItem('label_saved_orders', JSON.stringify(fsData));
+        ordersLastWriteJson.current = JSON.stringify(fsData); // 원격 반영 후 중복 재저장 방지
       }).catch((e) => console.error('[savedOrders] 실시간 로드 실패:', e));
     });
     return () => unsub();
@@ -1382,6 +1387,9 @@ export default function App({ user }) {
     if (!ordersCanSave.current || transactionInProgress.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(savedOrders));
+      const json = JSON.stringify(cleanData);
+      if (json === ordersLastWriteJson.current) return; // 변경 없음 → 불필요한 쓰기 생략
+      ordersLastWriteJson.current = json;
       saveSharded('savedOrders', cleanData).then((ua) => { ordersLastUpdatedAt.current = ua; }).catch((e) => console.error('[savedOrders] 저장 실패:', e));
     } catch(e) {}
   }, [savedOrders]);
@@ -1422,8 +1430,10 @@ export default function App({ user }) {
           return merged;
         });
         logsLastUpdatedAt.current = updatedAt;
-        // 병합 결과는 [stockLogs] 저장 effect가 분할 형식으로 다시 저장하므로
-        // logsLastWriteJson은 갱신하지 않는다.
+        // 서버 값을 마지막 저장값으로 기록 → 병합 결과가 서버와 같으면(정상 상태)
+        // 저장 effect가 중복 재저장을 생략한다. 로컬에 남은 옛 로그가 있어 병합 결과가
+        // 서버와 다르면(마이그레이션) json이 달라 정상적으로 다시 저장된다.
+        logsLastWriteJson.current = JSON.stringify(list);
       } else if (logsWasInLS.current) {
         // Firestore가 비어있을 때만 localStorage로 복구
         try {
@@ -1468,7 +1478,9 @@ export default function App({ user }) {
     if (!logsCanSave.current || transactionInProgress.current) return;
     try {
       const cleanData = JSON.parse(JSON.stringify(stockLogs));
-      logsLastWriteJson.current = JSON.stringify(cleanData);
+      const json = JSON.stringify(cleanData);
+      if (json === logsLastWriteJson.current) return; // 변경 없음 → 불필요한 쓰기 생략
+      logsLastWriteJson.current = json;
       saveSharded('stockLogs', cleanData).then((ua) => { logsLastUpdatedAt.current = ua; }).catch((e) => console.error('[stockLogs] 저장 실패:', e));
     } catch(e) { console.error('[stockLogs] 저장 직렬화 실패:', e); }
   }, [stockLogs]);
@@ -1522,6 +1534,7 @@ export default function App({ user }) {
       // [M1 수정] Firestore 스냅샷을 진실공급원으로 신뢰 — 합집합 병합 시 다른 사용자의 복원/영구삭제가 되돌아감
       setTrash(fsData);
       localStorage.setItem('label_trash', JSON.stringify(fsData));
+      trashLastWriteJson.current = fsJson; // 원격 반영 후 중복 재저장 방지
     });
     return () => unsub();
   }, []);
@@ -1530,7 +1543,9 @@ export default function App({ user }) {
     if (!trashCanSave.current || transactionInProgress.current) return;
     try {
       const clean = JSON.parse(JSON.stringify(trash));
-      trashLastWriteJson.current = JSON.stringify(clean);
+      const json = JSON.stringify(clean);
+      if (json === trashLastWriteJson.current) return; // 변경 없음 → 불필요한 쓰기 생략
+      trashLastWriteJson.current = json;
       setDoc(doc(db, 'settings', 'trash'), { list: clean }).catch((e) => console.error('[trash] 저장 실패:', e));
     } catch(e) { console.error('[trash] 저장 직렬화 실패:', e); }
   }, [trash]);
@@ -1674,6 +1689,7 @@ export default function App({ user }) {
       // [M1 수정] Firestore 스냅샷을 진실공급원으로 신뢰 — 합집합 병합 시 다른 사용자의 파일 삭제가 되돌아감
       setDocuments(fsData);
       localStorage.setItem('label_documents', JSON.stringify(fsData));
+      docsLastWriteJson.current = fsJson; // 원격 반영 후 중복 재저장 방지
     });
     return () => unsub();
   }, []);
@@ -1682,7 +1698,9 @@ export default function App({ user }) {
     if (!docsCanSave.current || transactionInProgress.current) return;
     try {
       const clean = JSON.parse(JSON.stringify(documents));
-      docsLastWriteJson.current = JSON.stringify(clean);
+      const json = JSON.stringify(clean);
+      if (json === docsLastWriteJson.current) return; // 변경 없음 → 불필요한 쓰기 생략
+      docsLastWriteJson.current = json;
       setDoc(doc(db, 'settings', 'documents'), { list: clean }).catch((e) => console.error('[documents] 저장 실패:', e));
     } catch(e) { console.error('[documents] 저장 직렬화 실패:', e); }
   }, [documents]);

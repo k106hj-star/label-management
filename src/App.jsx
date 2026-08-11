@@ -1814,8 +1814,66 @@ export default function App({ user }) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [calcFactory, setCalcFactory] = useState('');
   const [calcOrderer, setCalcOrderer] = useState('');
-  const [calcOrdererMode, setCalcOrdererMode] = useState('select');
-  const ORDERER_LIST = ['천영균', '이형주', '장경환', '선호준', '양동준'];
+  const DEFAULT_ORDERER_LIST = ['천영균', '이형주', '장경환', '선호준', '양동준'];
+  const [ordererList, setOrdererList] = useState(() => {
+    try { const s = localStorage.getItem('label_orderers'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a; } } catch(e) {}
+    return DEFAULT_ORDERER_LIST;
+  });
+  const [showOrdererManage, setShowOrdererManage] = useState(false);
+  const [newOrdererName, setNewOrdererName] = useState('');
+  const [editingOrdererIdx, setEditingOrdererIdx] = useState(null);
+  const [editingOrdererValue, setEditingOrdererValue] = useState('');
+  const ordererCanSave = useRef(false);
+  const ordererLastWriteJson = useRef('');
+  // 발주자 목록 Firestore 동기화 (모든 컴퓨터와 공유)
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'orderers')).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().list) && snap.data().list.length) {
+        const fs = snap.data().list;
+        setOrdererList(fs);
+        localStorage.setItem('label_orderers', JSON.stringify(fs));
+        ordererLastWriteJson.current = JSON.stringify(fs);
+      }
+    }).catch(e => console.error('[orderers] 로드 실패:', e)).finally(() => { ordererCanSave.current = true; });
+    const unsub = onSnapshot(doc(db, 'settings', 'orderers'), { includeMetadataChanges: true }, (snap) => {
+      if (!snap.exists() || snap.metadata.hasPendingWrites) return;
+      const fs = snap.data().list;
+      if (!Array.isArray(fs)) return;
+      const fsJson = JSON.stringify(fs);
+      if (fsJson === ordererLastWriteJson.current) return; // 내 쓰기/동일 데이터 스킵 (무한 루프 방지)
+      ordererLastWriteJson.current = fsJson;
+      setOrdererList(fs);
+      localStorage.setItem('label_orderers', JSON.stringify(fs));
+    });
+    return () => unsub();
+  }, []);
+  useEffect(() => {
+    const json = JSON.stringify(ordererList);
+    try { localStorage.setItem('label_orderers', json); } catch(e) {}
+    if (!ordererCanSave.current) return;
+    if (json === ordererLastWriteJson.current) return; // 변화 없으면 저장 안 함 (루프 방지)
+    ordererLastWriteJson.current = json;
+    setDoc(doc(db, 'settings', 'orderers'), { list: ordererList }).catch(e => console.error('[orderers] 저장 실패:', e));
+  }, [ordererList]);
+  const addOrderer = () => {
+    const n = newOrdererName.trim();
+    if (!n) return;
+    if (ordererList.includes(n)) { alert('이미 있는 이름입니다.'); return; }
+    setOrdererList(prev => [...prev, n]);
+    setNewOrdererName('');
+  };
+  const saveEditOrderer = () => {
+    const n = editingOrdererValue.trim();
+    if (!n) return;
+    if (ordererList.some((x, i) => x === n && i !== editingOrdererIdx)) { alert('이미 있는 이름입니다.'); return; }
+    setOrdererList(prev => prev.map((x, i) => i === editingOrdererIdx ? n : x));
+    setEditingOrdererIdx(null); setEditingOrdererValue('');
+  };
+  const deleteOrderer = (idx) => {
+    if (!window.confirm(`'${ordererList[idx]}' 을(를) 목록에서 삭제할까요?`)) return;
+    setOrdererList(prev => prev.filter((_, i) => i !== idx));
+    if (editingOrdererIdx === idx) setEditingOrdererIdx(null);
+  };
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
   const [calcRnNumber, setCalcRnNumber] = useState('');
@@ -3584,25 +3642,19 @@ export default function App({ user }) {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-emerald-900 mb-2">발주자</label>
-                  {calcOrdererMode === 'select' ? (
+                  <div className="flex gap-2">
                     <select
                       value={calcOrderer}
-                      onChange={e => {
-                        if (e.target.value === '__direct__') { setCalcOrdererMode('direct'); setCalcOrderer(''); }
-                        else setCalcOrderer(e.target.value);
-                      }}
-                      className="w-full p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                      onChange={e => setCalcOrderer(e.target.value)}
+                      className="flex-1 p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                     >
                       <option value="">-- 선택 --</option>
-                      {ORDERER_LIST.map(n => <option key={n} value={n}>{n}</option>)}
-                      <option value="__direct__">✏️ 직접입력</option>
+                      {ordererList.map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
-                  ) : (
-                    <div className="flex gap-2">
-                      <input type="text" value={calcOrderer} onChange={e => setCalcOrderer(e.target.value)} placeholder="발주자명 직접 입력" autoFocus className="flex-1 p-3 border border-emerald-200 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm" />
-                      <button onClick={() => { setCalcOrdererMode('select'); setCalcOrderer(''); }} className="px-3 py-2 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">목록</button>
-                    </div>
-                  )}
+                    <button type="button" onClick={() => setShowOrdererManage(true)} title="발주자 목록 편집" className="px-3 py-2 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-50 text-sm whitespace-nowrap flex items-center gap-1">
+                      <Pencil size={14} /> 편집
+                    </button>
+                  </div>
                 </div>
               </div>
               <div>
@@ -5155,6 +5207,45 @@ export default function App({ user }) {
               <X size={20} />
             </button>
             <img src={previewImg} alt="미리보기" className="max-w-full max-h-[80vh] rounded-xl shadow-2xl object-contain bg-white" />
+          </div>
+        </div>
+      )}
+
+      {/* 발주자 관리 모달 */}
+      {showOrdererManage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-800">발주자 관리</h3>
+              <button onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); }} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              <div className="flex gap-2 mb-4">
+                <input value={newOrdererName} onChange={e => setNewOrdererName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addOrderer(); }} placeholder="새 발주자 이름 추가" className="flex-1 p-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                <button onClick={addOrderer} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 whitespace-nowrap">추가</button>
+              </div>
+              <div className="space-y-2">
+                {ordererList.length === 0 && <p className="text-center text-slate-400 text-sm py-6">등록된 발주자가 없습니다.</p>}
+                {ordererList.map((name, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg">
+                    {editingOrdererIdx === idx ? (
+                      <>
+                        <input value={editingOrdererValue} onChange={e => setEditingOrdererValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveEditOrderer(); if (e.key === 'Escape') setEditingOrdererIdx(null); }} autoFocus className="flex-1 p-1.5 border border-emerald-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        <button onClick={saveEditOrderer} className="px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-medium">저장</button>
+                        <button onClick={() => setEditingOrdererIdx(null)} className="px-2.5 py-1 text-slate-500 border border-slate-200 rounded text-xs">취소</button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 text-sm text-slate-700 px-1">{name}</span>
+                        <button onClick={() => { setEditingOrdererIdx(idx); setEditingOrdererValue(name); }} className="px-2.5 py-1 text-slate-600 border border-slate-200 rounded text-xs hover:bg-slate-50">수정</button>
+                        <button onClick={() => deleteOrderer(idx)} className="px-2.5 py-1 text-red-500 border border-red-200 rounded text-xs hover:bg-red-50">삭제</button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-4">여기서 추가·수정·삭제한 발주자 목록은 모든 컴퓨터에 공유됩니다.</p>
+            </div>
           </div>
         </div>
       )}

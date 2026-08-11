@@ -1847,6 +1847,7 @@ export default function App({ user }) {
   const [calcSizeText, setCalcSizeText] = useState('M, L, XL, 2XL');
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
+  const [calcResetConfirm, setCalcResetConfirm] = useState(false); // 취소(초기화) 인라인 확인
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -4318,29 +4319,47 @@ export default function App({ user }) {
                   >
                     <Save size={18} /> 발주내용 저장
                   </button>
-                  <button
-                    onClick={() => {
-                      if (!window.confirm('처음부터 다시 시작하시겠습니까?\n입력한 내용이 모두 초기화됩니다.')) return;
-                      setCalcTarget('');
-                      setCalcSearchText('');
-                      setCalcFactory('');
-                      setCalcOrderer('');
-                      setCalcOrdererMode('select');
-                      setCalcNote('');
-                      setCalcMfgDate(`${new Date().getFullYear()}.`);
-                      setCalcRnNumber('');
-                      setCalcRnMode('select');
-                      setCalcColorText('블랙, 그레이');
-                      setCalcSizeText('M, L, XL, 2XL');
-                      setCalcQtyGrid({});
-                      setCalcResult(null);
-                      setCalcDaebongType('');
-                      setCalcDaebongQty('');
-                    }}
-                    className="flex items-center gap-2 bg-slate-500 hover:bg-slate-600 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
-                  >
-                    <X size={18} /> 취소
-                  </button>
+                  {calcResetConfirm ? (
+                    // 대화상자(window.confirm)는 브라우저가 차단하면 무시되므로 인라인 확인 사용
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-500 font-medium">초기화할까요?</span>
+                      <button
+                        onClick={() => {
+                          setCalcTarget('');
+                          setCalcSearchText('');
+                          setCalcFactory('');
+                          setCalcOrderer('');
+                          setCalcNote('');
+                          setCalcMfgDate(`${new Date().getFullYear()}.`);
+                          setCalcRnNumber('');
+                          setCalcRnMode('select');
+                          setCalcColorText('블랙, 그레이');
+                          setCalcSizeText('M, L, XL, 2XL');
+                          setCalcQtyGrid({});
+                          setCalcResult(null);
+                          setCalcDaebongType('');
+                          setCalcDaebongQty('');
+                          setCalcResetConfirm(false);
+                        }}
+                        className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors"
+                      >
+                        <X size={18} /> 초기화
+                      </button>
+                      <button
+                        onClick={() => setCalcResetConfirm(false)}
+                        className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-3 rounded-lg font-bold transition-colors"
+                      >
+                        아니오
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setCalcResetConfirm(true)}
+                      className="flex items-center gap-2 bg-slate-500 hover:bg-slate-600 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
+                    >
+                      <X size={18} /> 취소
+                    </button>
+                  )}
                   </div>
                 </div>
               </div>

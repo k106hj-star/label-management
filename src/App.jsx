@@ -4520,20 +4520,23 @@ export default function App({ user }) {
                   return `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
                 })();
                 const activeDetails = viewOrderEditMode && viewOrderEdits.details ? viewOrderEdits.details : (viewOrder.details || []);
-                const groups = {};
-                activeDetails.forEach((d, globalIdx) => {
-                  const v = d.vendor || '(공급처 미입력)';
-                  if (!groups[v]) groups[v] = [];
-                  groups[v].push({ ...d, _globalIdx: globalIdx });
-                });
-                return Object.entries(groups).map(([vendor, items]) => {
+                const withIdx = activeDetails.map((d, globalIdx) => ({ ...d, _globalIdx: globalIdx }));
+                // 발주서 PDF와 동일 분류: 본사 발주서(본사재고 있는 항목) / 업체 발주서(부족분 있는 항목)
+                const sections = [
+                  { key: '본사', title: '🏢 본사 발주서', items: withIdx.filter(d => Number(d.availableStock || 0) > 0) },
+                  { key: '업체', title: '🏭 업체 발주서', items: withIdx.filter(d => Number(d.shortage || 0) > 0) },
+                ].filter(s => s.items.length > 0);
+                if (sections.length === 0) return <div className="text-center text-slate-400 text-sm py-6">표시할 발주 항목이 없습니다.</div>;
+                return sections.map(({ key, title, items }) => {
                   const needItems = items.filter(i => i.shortage > 0);
                   const vendorCost = needItems.reduce((s,i) => s + (i.cost || 0), 0);
                   return (
-                    <div key={vendor} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div key={key} className="border border-slate-200 rounded-lg overflow-hidden">
                       <div className="bg-slate-700 text-white px-4 py-2 flex items-center justify-between text-sm">
-                        <span className="font-bold">📦 {vendor}</span>
-                        <span className="text-xs text-slate-300">발주 필요 {needItems.length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{vendorCost.toLocaleString()}원</span></span>
+                        <span className="font-bold">{title}</span>
+                        <span className="text-xs text-slate-300">{key === '업체'
+                          ? <>발주 필요 {needItems.length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{vendorCost.toLocaleString()}원</span></>
+                          : <>본사 출고 {items.length}종</>}</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-sm">

@@ -2135,7 +2135,7 @@ export default function App({ user }) {
   };
 
   // ── PDF 발주서 생성 — html2canvas 방식 (한글 완벽 지원) ─────────────────
-  const generateOrderPDF = async (resultDetails, vendorName = null) => {
+  const generateOrderPDF = async (resultDetails, vendorName = null, fileLabel = '') => {
     setPdfLoading(true);
     try {
 
@@ -2352,7 +2352,7 @@ export default function App({ user }) {
         return parts[parts.length - 1];
       })();
       const factory = (calcFactory || '').trim();
-      const filenameParts = [todayStr, productCode, factory].filter(Boolean);
+      const filenameParts = [todayStr, productCode, factory, fileLabel].filter(Boolean);
       const filename = `${filenameParts.join('_')}.pdf`;
       const blob = doc.output('blob');
       const url = URL.createObjectURL(blob);
@@ -4246,14 +4246,33 @@ export default function App({ user }) {
                   <span className="font-bold text-lg text-emerald-400">{calcResult.totalCost.toLocaleString()} 원</span>
                 </div>
                 <div className="mt-4 flex justify-between items-center gap-3">
-                  {/* PDF 다운로드 버튼 — 스마트 발주서만 */}
+                  {/* PDF 다운로드 버튼 — 본사재고 유무로 분리 */}
                   <div className="flex items-center gap-2">
+                    {/* 본사 발주서: 본사 재고로 충당하는 분(min(필요, 본사재고)) */}
                     <button
-                      onClick={() => generateOrderPDF(calcResult.details.filter(d => d.vendor === '스마트'), '스마트')}
+                      onClick={() => {
+                        const items = calcResult.details
+                          .filter(d => Math.min(d.needQty, d.availableStock) > 0)
+                          .map(d => ({ ...d, vendor: '본사', needQty: Math.min(d.needQty, d.availableStock), shortage: 0 }));
+                        if (items.length === 0) { alert('본사 재고가 있는 부자재가 없습니다.'); return; }
+                        generateOrderPDF(items, '본사', '본사');
+                      }}
+                      disabled={pdfLoading}
+                      className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
+                    >
+                      <FileDown size={16} /> {pdfLoading ? '생성 중...' : '본사 발주서 PDF'}
+                    </button>
+                    {/* 업체 발주서: 본사 재고로 부족한 분(shortage) — 공급처별 섹션 */}
+                    <button
+                      onClick={() => {
+                        const items = calcResult.details.filter(d => d.shortage > 0);
+                        if (items.length === 0) { alert('업체에 발주할 부족분이 없습니다.'); return; }
+                        generateOrderPDF(items, null, '업체');
+                      }}
                       disabled={pdfLoading}
                       className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors text-sm"
                     >
-                      <FileDown size={16} /> {pdfLoading ? '생성 중...' : '스마트 발주서 PDF'}
+                      <FileDown size={16} /> {pdfLoading ? '생성 중...' : '업체 발주서 PDF'}
                     </button>
                   </div>
                   <div className="flex items-center gap-3">

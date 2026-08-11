@@ -1003,7 +1003,6 @@ export default function App({ user }) {
   const [bomSelection, setBomSelection] = useState({ labelIds: [], qty: 1 });
   const [openProductMenuId, setOpenProductMenuId] = useState(null);
   const [editProduct, setEditProduct] = useState(null);
-  const [bomSaved, setBomSaved] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
   const [bomBrandFilter, setBomBrandFilter] = useState('auto');
@@ -1848,7 +1847,7 @@ export default function App({ user }) {
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
   const [calcResetConfirm, setCalcResetConfirm] = useState(false); // 취소(초기화) 인라인 확인
-  const [savedNotice, setSavedNotice] = useState(false); // 발주 저장 완료 알림(앱 내부, window.alert 대체)
+  const [savedNotice, setSavedNotice] = useState(null); // 저장 완료 알림(앱 내부, window.alert 대체) — { sub, onClose } | null
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -3952,16 +3951,9 @@ export default function App({ user }) {
 
                   {selectedProduct.bom.length > 0 && (
                     <div className="mt-6 flex justify-center">
-                      {bomSaved ? (
-                        <div className="flex items-center gap-2 text-green-600 font-medium text-sm bg-green-50 px-6 py-3 rounded-lg border border-green-200">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                          저장 완료!
-                        </div>
-                      ) : (
-                        <button onClick={() => { setBomSaved(true); setTimeout(() => setBomSaved(false), 2000); }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg text-sm font-bold shadow-sm transition-colors">
-                          ✅ 라벨 세팅 완료
-                        </button>
-                      )}
+                      <button onClick={() => setSavedNotice({ sub: '라벨 세팅이 저장되었습니다.', onClose: () => setSelectedProduct(null) })} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-lg text-sm font-bold shadow-sm transition-colors">
+                        ✅ 라벨 세팅 완료
+                      </button>
                     </div>
                   )}
                 </>
@@ -4333,7 +4325,7 @@ export default function App({ user }) {
                       };
                       setSavedOrders(prev => [order, ...prev]);
                       addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });
-                      setSavedNotice(true); // window.alert은 브라우저 차단 시 안 뜨므로 앱 내부 알림창 사용
+                      setSavedNotice({ sub: '발주 내용이 저장리스트에 저장되었습니다.', onClose: resetCalcForm }); // window.alert은 브라우저 차단 시 안 뜨므로 앱 내부 알림창 사용
                     }}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
                   >
@@ -4647,17 +4639,17 @@ export default function App({ user }) {
         </div>
       )}
 
-      {/* 발주 저장 완료 알림 (window.alert 대체 — 닫으면 계산기 초기화) */}
+      {/* 저장 완료 알림 (window.alert 대체 — 닫으면 해당 화면 초기화) */}
       {savedNotice && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setSavedNotice(false); resetCalcForm(); }}>
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { const cb = savedNotice.onClose; setSavedNotice(null); cb && cb(); }}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
             <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
               <Save size={26} className="text-emerald-600" />
             </div>
             <h3 className="text-lg font-bold text-slate-800 mb-1">저장되었습니다</h3>
-            <p className="text-sm text-slate-500 mb-5">발주 내용이 저장리스트에 저장되었습니다.</p>
+            <p className="text-sm text-slate-500 mb-5">{savedNotice.sub || '저장되었습니다.'}</p>
             <button
-              onClick={() => { setSavedNotice(false); resetCalcForm(); }}
+              onClick={() => { const cb = savedNotice.onClose; setSavedNotice(null); cb && cb(); }}
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors"
             >
               확인

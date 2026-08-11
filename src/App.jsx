@@ -2170,9 +2170,16 @@ export default function App({ user }) {
   };
 
   // ── PDF 발주서 생성 — html2canvas 방식 (한글 완벽 지원) ─────────────────
-  const generateOrderPDF = async (resultDetails, vendorName = null, fileLabel = '') => {
+  const generateOrderPDF = async (resultDetails, vendorName = null, fileLabel = '', meta = {}) => {
     setPdfLoading(true);
     try {
+      // 저장된 발주의 PDF는 그 발주의 값을 사용, 없으면 계산기 폼 값 사용
+      const pOrderer = meta.orderer ?? calcOrderer;
+      const pFactory = meta.factory ?? calcFactory;
+      const pProductName = meta.productName ?? calcSearchText;
+      const pNote = meta.note ?? calcNote;
+      const pMfgDate = meta.mfgDate ?? calcMfgDate;
+      const pRnNumber = meta.rnNumber ?? calcRnNumber;
 
       const todayStr = (() => {
         const d = new Date();
@@ -2270,8 +2277,8 @@ export default function App({ user }) {
             const parts = [];
             if (first.careInfo?.code)     parts.push(`품번: ${first.careInfo.code}`);
             if (first.careInfo?.material) parts.push(`소재: ${first.careInfo.material}`);
-            if (calcMfgDate)              parts.push(`제조년월: ${calcMfgDate}`);
-            if (calcRnNumber)             parts.push(`RN#: ${calcRnNumber}`);
+            if (pMfgDate)              parts.push(`제조년월: ${pMfgDate}`);
+            if (pRnNumber)             parts.push(`RN#: ${pRnNumber}`);
             if (parts.length) labelHtml += '<br><span style="font-size:10px">' + parts.join('<br>') + '</span>';
           }
 
@@ -2284,16 +2291,16 @@ export default function App({ user }) {
             if (idx === 0) {
               tbodyHtml += `<tr style="${rowBg}">
                 <td rowspan="${n}" style="${centerCell}">${todayStr}</td>
-                <td rowspan="${n}" style="${centerCell}">${calcOrderer || '-'}</td>
-                <td rowspan="${n}" style="${centerCell}">${calcFactory || '-'}</td>
+                <td rowspan="${n}" style="${centerCell}">${pOrderer || '-'}</td>
+                <td rowspan="${n}" style="${centerCell}">${pFactory || '-'}</td>
                 <td rowspan="${n}" style="${cellStyle}">${labelHtml}</td>
                 <td rowspan="${n}" style="${centerCell}">${codeRange}</td>
                 <td rowspan="${n}" style="${centerCell}padding:4px;">${imgHtml}</td>
-                <td rowspan="${n}" style="${cellStyle}font-size:10px;">${calcSearchText || '-'}</td>
+                <td rowspan="${n}" style="${cellStyle}font-size:10px;">${pProductName || '-'}</td>
                 <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
                 <td style="${centerCell}color:#555;">${Number(item.availableStock ?? item.stock ?? 0).toLocaleString()}개</td>
                 <td style="${centerCell}font-weight:bold;">${qty.toLocaleString()}개</td>
-                <td rowspan="${n}" style="${cellStyle}${isCare ? 'background:#ffff00;' : ''}">${calcNote || ''}</td>
+                <td rowspan="${n}" style="${cellStyle}${isCare ? 'background:#ffff00;' : ''}">${pNote || ''}</td>
               </tr>`;
             } else {
               tbodyHtml += `<tr style="${rowBg}">
@@ -2384,12 +2391,12 @@ export default function App({ user }) {
 
       // 품번: 상품명/품번 입력값에서 품번 부분만 추출 (공백 기준 마지막 단어)
       const productCode = (() => {
-        const text = (calcSearchText || '').trim();
+        const text = (pProductName || '').trim();
         if (!text) return '';
         const parts = text.split(/\s+/);
         return parts[parts.length - 1];
       })();
-      const factory = (calcFactory || '').trim();
+      const factory = (pFactory || '').trim();
       const filenameParts = [todayStr, productCode, factory, fileLabel].filter(Boolean);
       const filename = `${filenameParts.join('_')}.pdf`;
       const blob = doc.output('blob');
@@ -4521,22 +4528,66 @@ export default function App({ user }) {
                 })();
                 const activeDetails = viewOrderEditMode && viewOrderEdits.details ? viewOrderEdits.details : (viewOrder.details || []);
                 const withIdx = activeDetails.map((d, globalIdx) => ({ ...d, _globalIdx: globalIdx }));
-                // 발주서 PDF와 동일 분류: 본사 발주서(본사재고 있는 항목) / 업체 발주서(부족분 있는 항목)
-                const sections = [
-                  { key: '본사', title: '🏢 본사 발주서', items: withIdx.filter(d => Number(d.availableStock || 0) > 0) },
-                  { key: '업체', title: '🏭 업체 발주서', items: withIdx.filter(d => Number(d.shortage || 0) > 0) },
-                ].filter(s => s.items.length > 0);
-                if (sections.length === 0) return <div className="text-center text-slate-400 text-sm py-6">표시할 발주 항목이 없습니다.</div>;
-                return sections.map(({ key, title, items }) => {
-                  const needItems = items.filter(i => i.shortage > 0);
-                  const vendorCost = needItems.reduce((s,i) => s + (i.cost || 0), 0);
-                  return (
+
+                // ── 편집 모드: 발주수량(shortage) 편집 (본사/업체 그룹) ──
+                if (viewOrderEditMode) {
+                  const editSections = [
+                    { key: '본사', title: '🏢 본사 발주서', items: withIdx.filter(d => Number(d.availableStock || 0) > 0) },
+                    { key: '업체', title: '🏭 업체 발주서', items: withIdx.filter(d => Number(d.shortage || 0) > 0) },
+                  ].filter(s => s.items.length > 0);
+                  return editSections.map(({ key, title, items }) => (
                     <div key={key} className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="bg-slate-700 text-white px-4 py-2 text-sm"><span className="font-bold">{title}</span></div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
+                              <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {items.map((d, i) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="p-3"><div className="font-medium text-slate-800">{d.labelName || d.name}</div><div className="text-xs text-slate-400">{d.code}</div></td>
+                                <td className="p-3 text-center text-slate-700 font-bold">{d.size || '-'}</td>
+                                <td className="p-3 text-right text-slate-600">{Number(d.stock ?? 0).toLocaleString()}</td>
+                                <td className="p-3 text-right text-amber-700 font-medium">{Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}</td>
+                                <td className="p-3 text-right font-bold">
+                                  <input type="number" min="0" value={d.shortage}
+                                    onChange={e => setViewOrderEdits(prev => { const nd = [...prev.details]; nd[d._globalIdx] = { ...nd[d._globalIdx], shortage: parseInt(e.target.value) || 0 }; return { ...prev, details: nd }; })}
+                                    className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300" />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ));
+                }
+
+                // ── 보기 모드: 계산기 결과처럼 (본사 발주서 + 업체 공급처별), 본사재고/가용재고/필요수량 ──
+                const hqItems = withIdx.filter(d => Number(d.availableStock ?? d.stock ?? 0) > 0);
+                const vendorItems = withIdx.filter(d => Number(d.shortage || 0) > 0);
+                const vGroups = {};
+                vendorItems.forEach(d => { const v = d.vendor || '(공급처 미입력)'; if (!vGroups[v]) vGroups[v] = []; vGroups[v].push(d); });
+                const sections = [];
+                if (hqItems.length) sections.push({ key: 'hq', title: '🏢 본사 발주서', vendor: false, items: hqItems });
+                Object.entries(vGroups).forEach(([vendor, items]) => sections.push({ key: 'v_' + vendor, title: `🏭 업체 발주서 · ${vendor}`, vendor: true, items }));
+                if (!sections.length) return <div className="text-center text-slate-400 text-sm py-6">표시할 발주 항목이 없습니다.</div>;
+                return sections.map((section) => {
+                  const cost = section.items.filter(i => i.shortage > 0).reduce((s,i) => s + (i.cost || 0), 0);
+                  return (
+                    <div key={section.key} className="border border-slate-200 rounded-lg overflow-hidden">
                       <div className="bg-slate-700 text-white px-4 py-2 flex items-center justify-between text-sm">
-                        <span className="font-bold">{title}</span>
-                        <span className="text-xs text-slate-300">{key === '업체'
-                          ? <>발주 필요 {needItems.length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{vendorCost.toLocaleString()}원</span></>
-                          : <>본사 출고 {items.length}종</>}</span>
+                        <span className="font-bold">{section.title}</span>
+                        <span className="text-xs text-slate-300">{section.vendor
+                          ? <>발주 필요 {section.items.filter(i => i.shortage > 0).length}종 / 예상 비용 <span className="text-emerald-300 font-bold">{cost.toLocaleString()}원</span></>
+                          : <>본사 출고 {section.items.length}종</>}</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-sm">
@@ -4549,17 +4600,18 @@ export default function App({ user }) {
                               <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                               <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-blue-50 text-blue-600">본사수량</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-amber-50 text-amber-600">가용재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                               <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {items.map((d, i) => (
-                              <tr key={i} className={`hover:bg-slate-50 ${d.shortage > 0 ? '' : ''}`}>
+                            {section.items.map((d, i) => (
+                              <tr key={i} className={d.shortage > 0 ? 'hover:bg-red-50/30' : 'hover:bg-slate-50'}>
                                 <td className="p-3 text-slate-400 whitespace-nowrap">{dateStr}</td>
-                                <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.orderer || '-') : (viewOrder.orderer || '-')}</td>
-                                <td className="p-3 text-slate-700">{viewOrderEditMode ? (viewOrderEdits.factory || '-') : (viewOrder.factory || '-')}</td>
+                                <td className="p-3 text-slate-700">{viewOrder.orderer || '-'}</td>
+                                <td className="p-3 text-slate-700">{viewOrder.factory || '-'}</td>
                                 <td className="p-3">
                                   <div className="font-medium text-slate-800">{d.labelName || d.name}</div>
                                   <div className="text-xs text-slate-400">{d.code}</div>
@@ -4588,30 +4640,13 @@ export default function App({ user }) {
                                 </td>
                                 <td className="p-3 text-slate-700">{viewOrder.productName || '-'}</td>
                                 <td className="p-3 text-center text-slate-700 text-base font-bold">{d.size || '-'}</td>
-                                <td className="p-3 text-right font-bold text-blue-700">
-                                  {Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}개
+                                <td className="p-3 text-right text-slate-600">
+                                  <div>{Number(d.stock ?? 0).toLocaleString()}</div>
+                                  {Number(d.reserveStock ?? 0) > 0 && <div className="text-xs text-slate-400 whitespace-nowrap">발주중 {Number(d.reserveStock).toLocaleString()}</div>}
                                 </td>
-                                <td className="p-3 text-right font-bold">
-                                  {viewOrderEditMode
-                                    ? <input
-                                        type="number"
-                                        min="0"
-                                        value={d.shortage}
-                                        onChange={e => setViewOrderEdits(prev => {
-                                          const newDetails = [...prev.details];
-                                          newDetails[d._globalIdx] = { ...newDetails[d._globalIdx], shortage: parseInt(e.target.value) || 0 };
-                                          return { ...prev, details: newDetails };
-                                        })}
-                                        className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300"
-                                      />
-                                    : (() => {
-                                        const isVendor = key !== '본사';
-                                        const orderQty = isVendor ? Number(d.shortage || 0) : Math.min(Number(d.needQty || 0), Number(d.availableStock || 0));
-                                        return <span className={isVendor ? 'text-red-600' : 'text-slate-800'}>{orderQty > 0 ? `${orderQty.toLocaleString()}개` : '-'}</span>;
-                                      })()
-                                  }
-                                </td>
-                                <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrderEditMode ? (viewOrderEdits.note || '-') : (viewOrder.note || '-')}</td>
+                                <td className="p-3 text-right text-amber-700 font-medium">{Number(d.availableStock ?? d.stock ?? 0).toLocaleString()}</td>
+                                <td className="p-3 text-right font-bold"><span className={d.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>{Number(d.needQty ?? 0).toLocaleString()}개</span></td>
+                                <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrder.note || '-'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -4625,7 +4660,37 @@ export default function App({ user }) {
                 <span className="text-slate-300 font-medium">총 예상 발주 비용 합계</span>
                 <span className="text-emerald-400 font-bold text-lg">{viewOrder.totalCost?.toLocaleString()} 원</span>
               </div>
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-between items-center pt-2 gap-3 flex-wrap">
+                {/* 본사/업체 발주서 PDF — 저장된 발주의 값으로 생성 */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const pdfMeta = { orderer: viewOrder.orderer, factory: viewOrder.factory, productName: viewOrder.productName, note: viewOrder.note, mfgDate: viewOrder.mfgDate, rnNumber: viewOrder.rnNumber };
+                      const items = (viewOrder.details || [])
+                        .filter(d => Math.min(Number(d.needQty || 0), Number(d.availableStock || 0)) > 0)
+                        .map(d => ({ ...d, vendor: '본사', needQty: Math.min(Number(d.needQty || 0), Number(d.availableStock || 0)), shortage: 0 }));
+                      if (items.length === 0) { alert('본사 재고가 있는 부자재가 없습니다.'); return; }
+                      generateOrderPDF(items, '본사', '본사', pdfMeta);
+                    }}
+                    disabled={pdfLoading}
+                    className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 disabled:bg-slate-400 text-white px-4 py-2.5 rounded-lg font-bold shadow transition-colors text-sm"
+                  >
+                    <FileDown size={15} /> {pdfLoading ? '생성 중...' : '본사 발주서 PDF'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const pdfMeta = { orderer: viewOrder.orderer, factory: viewOrder.factory, productName: viewOrder.productName, note: viewOrder.note, mfgDate: viewOrder.mfgDate, rnNumber: viewOrder.rnNumber };
+                      const items = (viewOrder.details || []).filter(d => Number(d.shortage || 0) > 0);
+                      if (items.length === 0) { alert('업체에 발주할 부족분이 없습니다.'); return; }
+                      generateOrderPDF(items, null, '업체', pdfMeta);
+                    }}
+                    disabled={pdfLoading}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-4 py-2.5 rounded-lg font-bold shadow transition-colors text-sm"
+                  >
+                    <FileDown size={15} /> {pdfLoading ? '생성 중...' : '업체 발주서 PDF'}
+                  </button>
+                </div>
+                <div>
                 {viewOrder.applied
                   ? <div className="flex items-center gap-3">
                       <div className="flex items-center gap-2 text-green-600 font-medium text-sm bg-green-50 px-5 py-2.5 rounded-lg border border-green-200">
@@ -4640,6 +4705,7 @@ export default function App({ user }) {
                       {isProcessingOrder(viewOrder.id) ? '처리 중...' : '📦 발주 확정 (재고 차감)'}
                     </button>
                 }
+                </div>
               </div>
             </div>
           </div>

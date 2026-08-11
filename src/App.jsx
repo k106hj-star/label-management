@@ -1961,7 +1961,7 @@ export default function App({ user }) {
   const [receiveFactory, setReceiveFactory] = useState('');     // 입고: 1단계 공장 선택
   const [receiveOrderSearch, setReceiveOrderSearch] = useState(''); // 입고: 발주품목 검색어
   const [receiveOrderSearchOpen, setReceiveOrderSearchOpen] = useState(false);
-  const [receiveOrderId, setReceiveOrderId] = useState('');     // 입고 처리할 발주(주문) id
+  const [receiveOrderId, setReceiveOrderId] = useState('');     // 사용 처리할 발주(주문) id
   const [receiveGrid, setReceiveGrid] = useState({});           // { 'color|size': 입고수량 }
   const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
   const _OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
@@ -2017,7 +2017,7 @@ export default function App({ user }) {
       if (consume > 0) { consumeMap[d.id] = (consumeMap[d.id] || 0) + consume; summary.push(`• ${d.name}${d.size ? ' (' + d.size + ')' : ''}: ${consume.toLocaleString()}장`); }
     });
     if (!Object.keys(consumeMap).length) return alert('차감할 라벨이 없습니다.');
-    if (!window.confirm(`'${factory}'에 '${order.productName}' 입고 처리합니다.\n총 입고 제품: ${totalReceived.toLocaleString()}개\n\n공장 재고에서 차감될 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
+    if (!window.confirm(`'${factory}'에 '${order.productName}' 사용 처리합니다.\n총 입고 제품: ${totalReceived.toLocaleString()}개\n\n공장 재고에서 차감될 라벨:\n${summary.join('\n')}\n\n진행할까요?`)) return;
     transactionInProgress.current = true;
     try {
       let finalLabels = [];
@@ -2036,11 +2036,11 @@ export default function App({ user }) {
       });
       setLabels(finalLabels);
       addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: `제품 입고: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
-      alert(`입고 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
+      alert(`사용 처리 완료 — ${factory}의 라벨 재고가 차감되었습니다.`);
       setReceiveGrid({});
     } catch(e) {
       console.error('[receiveOrder] 실패:', e);
-      alert('입고 처리 중 오류: ' + e.message);
+      alert('사용 처리 중 오류: ' + e.message);
     } finally {
       transactionInProgress.current = false;
     }
@@ -3564,7 +3564,7 @@ export default function App({ user }) {
                 );
               })()}
               <div className="mt-3 flex justify-end">
-                <button onClick={receiveOrderToFactory} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">입고 처리 (라벨 차감)</button>
+                <button onClick={receiveOrderToFactory} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">사용 처리 (라벨 차감)</button>
               </div>
             </div>
 

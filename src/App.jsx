@@ -2294,12 +2294,14 @@ export default function App({ user }) {
                 <td rowspan="${n}" style="${centerCell}padding:4px;">${imgHtml}</td>
                 <td rowspan="${n}" style="${cellStyle}font-size:10px;">${calcSearchText || '-'}</td>
                 <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
+                <td style="${centerCell}color:#555;">${Number(item.availableStock ?? item.stock ?? 0).toLocaleString()}개</td>
                 <td style="${centerCell}font-weight:bold;">${qty.toLocaleString()}개</td>
                 <td rowspan="${n}" style="${cellStyle}${isCare ? 'background:#ffff00;' : ''}">${calcNote || ''}</td>
               </tr>`;
             } else {
               tbodyHtml += `<tr style="${rowBg}">
                 <td style="${centerCell}font-weight:bold;">${item.size || 'FR'}</td>
+                <td style="${centerCell}color:#555;">${Number(item.availableStock ?? item.stock ?? 0).toLocaleString()}개</td>
                 <td style="${centerCell}font-weight:bold;">${qty.toLocaleString()}개</td>
               </tr>`;
             }
@@ -2312,7 +2314,7 @@ export default function App({ user }) {
             <colgroup>
               <col style="width:70px"/><col style="width:60px"/><col style="width:70px"/>
               <col style="width:140px"/><col style="width:85px"/><col style="width:80px"/>
-              <col style="width:200px"/><col style="width:45px"/><col style="width:65px"/>
+              <col style="width:200px"/><col style="width:45px"/><col style="width:60px"/><col style="width:65px"/>
               <col style="width:115px"/>
             </colgroup>
             <thead>
@@ -2325,6 +2327,7 @@ export default function App({ user }) {
                 <th style="padding:8px;text-align:center;border:1px solid #555;">이미지</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">품명/품번</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">size</th>
+                <th style="padding:8px;text-align:center;border:1px solid #555;">본사재고</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">수량</th>
                 <th style="padding:8px;text-align:center;border:1px solid #555;">비고</th>
               </tr>

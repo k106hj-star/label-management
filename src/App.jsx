@@ -1823,6 +1823,7 @@ export default function App({ user }) {
   const [newOrdererName, setNewOrdererName] = useState('');
   const [editingOrdererIdx, setEditingOrdererIdx] = useState(null);
   const [editingOrdererValue, setEditingOrdererValue] = useState('');
+  const [confirmDeleteOrdererIdx, setConfirmDeleteOrdererIdx] = useState(null);
   const ordererCanSave = useRef(false);
   const ordererLastWriteJson = useRef('');
   // 발주자 목록 Firestore 동기화 (모든 컴퓨터와 공유)
@@ -1870,9 +1871,9 @@ export default function App({ user }) {
     setEditingOrdererIdx(null); setEditingOrdererValue('');
   };
   const deleteOrderer = (idx) => {
-    if (!window.confirm(`'${ordererList[idx]}' 을(를) 목록에서 삭제할까요?`)) return;
     setOrdererList(prev => prev.filter((_, i) => i !== idx));
     if (editingOrdererIdx === idx) setEditingOrdererIdx(null);
+    setConfirmDeleteOrdererIdx(null);
   };
   const [calcNote, setCalcNote] = useState('');
   const [calcMfgDate, setCalcMfgDate] = useState(() => `${new Date().getFullYear()}.`);
@@ -5213,11 +5214,11 @@ export default function App({ user }) {
 
       {/* 발주자 관리 모달 */}
       {showOrdererManage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); }}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); setConfirmDeleteOrdererIdx(null); }}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <h3 className="text-lg font-bold text-slate-800">발주자 관리</h3>
-              <button onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); }} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              <button onClick={() => { setShowOrdererManage(false); setEditingOrdererIdx(null); setConfirmDeleteOrdererIdx(null); }} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <div className="p-5 overflow-y-auto flex-1">
               <div className="flex gap-2 mb-4">
@@ -5234,11 +5235,17 @@ export default function App({ user }) {
                         <button onClick={saveEditOrderer} className="px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-medium">저장</button>
                         <button onClick={() => setEditingOrdererIdx(null)} className="px-2.5 py-1 text-slate-500 border border-slate-200 rounded text-xs">취소</button>
                       </>
+                    ) : confirmDeleteOrdererIdx === idx ? (
+                      <>
+                        <span className="flex-1 text-sm text-red-600 px-1 font-medium">삭제할까요?</span>
+                        <button onClick={() => deleteOrderer(idx)} className="px-2.5 py-1 bg-red-500 text-white rounded text-xs font-medium hover:bg-red-600">삭제</button>
+                        <button onClick={() => setConfirmDeleteOrdererIdx(null)} className="px-2.5 py-1 text-slate-500 border border-slate-200 rounded text-xs">취소</button>
+                      </>
                     ) : (
                       <>
                         <span className="flex-1 text-sm text-slate-700 px-1">{name}</span>
-                        <button onClick={() => { setEditingOrdererIdx(idx); setEditingOrdererValue(name); }} className="px-2.5 py-1 text-slate-600 border border-slate-200 rounded text-xs hover:bg-slate-50">수정</button>
-                        <button onClick={() => deleteOrderer(idx)} className="px-2.5 py-1 text-red-500 border border-red-200 rounded text-xs hover:bg-red-50">삭제</button>
+                        <button onClick={() => { setEditingOrdererIdx(idx); setEditingOrdererValue(name); setConfirmDeleteOrdererIdx(null); }} className="px-2.5 py-1 text-slate-600 border border-slate-200 rounded text-xs hover:bg-slate-50">수정</button>
+                        <button onClick={() => { setConfirmDeleteOrdererIdx(idx); setEditingOrdererIdx(null); }} className="px-2.5 py-1 text-red-500 border border-red-200 rounded text-xs hover:bg-red-50">삭제</button>
                       </>
                     )}
                   </div>

@@ -1848,6 +1848,7 @@ export default function App({ user }) {
   const [calcQtyGrid, setCalcQtyGrid] = useState({});
   const [calcResult, setCalcResult] = useState(null);
   const [calcResetConfirm, setCalcResetConfirm] = useState(false); // 취소(초기화) 인라인 확인
+  const [savedNotice, setSavedNotice] = useState(false); // 발주 저장 완료 알림(앱 내부, window.alert 대체)
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -2083,6 +2084,25 @@ export default function App({ user }) {
   const [calcDaebongQty, setCalcDaebongQty] = useState('');
   const [calcDaebongType, setCalcDaebongType] = useState('');
   const DAEBONG_RATIO = { '반팔': 50, '후드': 20, '아우터': 15, '바지': 50 };
+
+  // 발주 계산기 입력/결과 전체 초기화 (취소 버튼·저장 완료 알림 닫기에서 공통 사용)
+  const resetCalcForm = () => {
+    setCalcTarget('');
+    setCalcSearchText('');
+    setCalcFactory('');
+    setCalcOrderer('');
+    setCalcNote('');
+    setCalcMfgDate(`${new Date().getFullYear()}.`);
+    setCalcRnNumber('');
+    setCalcRnMode('select');
+    setCalcColorText('블랙, 그레이');
+    setCalcSizeText('M, L, XL, 2XL');
+    setCalcQtyGrid({});
+    setCalcResult(null);
+    setCalcDaebongType('');
+    setCalcDaebongQty('');
+    setCalcResetConfirm(false);
+  };
   const [calcRnMode, setCalcRnMode] = useState('select');
   const RN_LIST = [
     { rn: 'RN#1487', factory: '성진' }, { rn: 'RN#1633', factory: '동원' }, { rn: 'RN#2527', factory: 'JB(2DAY텍스)' },
@@ -4313,7 +4333,7 @@ export default function App({ user }) {
                       };
                       setSavedOrders(prev => [order, ...prev]);
                       addLog({ type: 'order_save', productName: order.productName || '(미선택)', factory: order.factory || '-', orderer: order.orderer || '-', itemCount: order.details?.filter(d => d.shortage > 0).length || 0, totalCost: order.totalCost, summary: `발주 저장: ${order.productName || '(미선택)'}` });
-                      alert('발주 내용이 저장되었습니다!');
+                      setSavedNotice(true); // window.alert은 브라우저 차단 시 안 뜨므로 앱 내부 알림창 사용
                     }}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-lg font-bold shadow transition-colors"
                   >
@@ -4324,23 +4344,7 @@ export default function App({ user }) {
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-500 font-medium">초기화할까요?</span>
                       <button
-                        onClick={() => {
-                          setCalcTarget('');
-                          setCalcSearchText('');
-                          setCalcFactory('');
-                          setCalcOrderer('');
-                          setCalcNote('');
-                          setCalcMfgDate(`${new Date().getFullYear()}.`);
-                          setCalcRnNumber('');
-                          setCalcRnMode('select');
-                          setCalcColorText('블랙, 그레이');
-                          setCalcSizeText('M, L, XL, 2XL');
-                          setCalcQtyGrid({});
-                          setCalcResult(null);
-                          setCalcDaebongType('');
-                          setCalcDaebongQty('');
-                          setCalcResetConfirm(false);
-                        }}
+                        onClick={resetCalcForm}
                         className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors"
                       >
                         <X size={18} /> 초기화
@@ -4639,6 +4643,25 @@ export default function App({ user }) {
                 }
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 발주 저장 완료 알림 (window.alert 대체 — 닫으면 계산기 초기화) */}
+      {savedNotice && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => { setSavedNotice(false); resetCalcForm(); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
+            <div className="mx-auto w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+              <Save size={26} className="text-emerald-600" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800 mb-1">저장되었습니다</h3>
+            <p className="text-sm text-slate-500 mb-5">발주 내용이 저장리스트에 저장되었습니다.</p>
+            <button
+              onClick={() => { setSavedNotice(false); resetCalcForm(); }}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-lg font-bold shadow transition-colors"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

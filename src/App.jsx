@@ -1255,7 +1255,7 @@ export default function App({ user }) {
     if (processingOrderIds.has(order.id)) return; // [C5] 연타 방지
     // [수정] needQty 기준 (applyOrderToStock와 일치)
     const orderItems = (order.details || []).filter(d => Number(d.needQty || d.shortage || 0) > 0);
-    if (!window.confirm(`발주 확정을 취소하시겠습니까?\n차감된 본사재고 수량이 원복됩니다.`)) return;
+    // 확인창(window.confirm)은 브라우저 차단 시 무시되므로 바로 진행 → 성공 시 앱 내부 알림창.
     const _restoreUid = user?.email ? user.email.split('@')[0] : '';
     const _restoreName = currentUserName || user?.displayName || '';
     setProcessingOrderIds(prev => { const n = new Set(prev); n.add(order.id); return n; });
@@ -1317,7 +1317,7 @@ export default function App({ user }) {
         setViewOrder(prev => ({ ...prev, applied: false, appliedAt: null }));
       }
       setStockLogs(prev => [{ id: uniqueId(), date: new Date().toLocaleString('ko-KR'), type: 'restore', orderId: order.id, productName: order.productName || '(미선택)', factory: order.factory || '-', items: logItems, userId: _restoreUid, userName: _restoreName }, ...prev]);
-      alert('발주 확정이 취소되었습니다. 재고가 원복되었습니다.');
+      setSavedNotice({ title: '확정 취소 완료', sub: '차감된 재고가 원복되었습니다.', onClose: () => setViewOrder(null) });
     } catch(e) {
       console.error('[cancelOrderFromStock] 실패:', e);
       if (e.message === 'already_cancelled') alert('이미 취소된 발주입니다. 새로고침 후 확인하세요.');
@@ -4548,7 +4548,8 @@ export default function App({ user }) {
                             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600">
                               <th className="p-3 font-medium whitespace-nowrap">라벨명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">발주수량</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -4556,7 +4557,8 @@ export default function App({ user }) {
                               <tr key={i} className="hover:bg-slate-50">
                                 <td className="p-3"><div className="font-medium text-slate-800">{d.labelName || d.name}</div><div className="text-xs text-slate-400">{d.code}</div></td>
                                 <td className="p-3 text-center text-slate-700 font-bold">{d.size || '-'}</td>
-                                <td className="p-3 text-right text-slate-600">{Number(d.stock ?? 0).toLocaleString()}</td>                                <td className="p-3 text-right font-bold">
+                                <td className="p-3 text-right text-slate-600">{Number(d.stock ?? 0).toLocaleString()}</td>
+                                <td className="p-3 text-right font-bold">
                                   <input type="number" min="0" value={d.shortage}
                                     onChange={e => setViewOrderEdits(prev => { const nd = [...prev.details]; nd[d._globalIdx] = { ...nd[d._globalIdx], shortage: parseInt(e.target.value) || 0 }; return { ...prev, details: nd }; })}
                                     className="w-20 text-right border border-slate-300 rounded px-2 py-0.5 text-sm text-red-600 font-bold focus:outline-none focus:ring-1 focus:ring-orange-300" />
@@ -4600,7 +4602,8 @@ export default function App({ user }) {
                               <th className="p-3 font-medium whitespace-nowrap">이미지</th>
                               <th className="p-3 font-medium whitespace-nowrap">상품명</th>
                               <th className="p-3 font-medium whitespace-nowrap text-center">SIZE</th>
-                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-slate-50 text-slate-500">본사재고</th>
+                              <th className="p-3 font-medium whitespace-nowrap text-right bg-red-50 text-red-600">필요수량</th>
                               <th className="p-3 font-medium whitespace-nowrap">특이사항</th>
                             </tr>
                           </thead>
@@ -4641,7 +4644,8 @@ export default function App({ user }) {
                                 <td className="p-3 text-right text-slate-600">
                                   <div>{Number(d.stock ?? 0).toLocaleString()}</div>
                                   {Number(d.reserveStock ?? 0) > 0 && <div className="text-xs text-slate-400 whitespace-nowrap">발주중 {Number(d.reserveStock).toLocaleString()}</div>}
-                                </td>                                <td className="p-3 text-right font-bold"><span className={d.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>{Number(d.needQty ?? 0).toLocaleString()}개</span></td>
+                                </td>
+                                <td className="p-3 text-right font-bold"><span className={d.shortage > 0 ? 'text-red-600' : 'text-slate-800'}>{Number(d.needQty ?? 0).toLocaleString()}개</span></td>
                                 <td className="p-3 text-slate-500 text-xs max-w-32 truncate">{viewOrder.note || '-'}</td>
                               </tr>
                             ))}

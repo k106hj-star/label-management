@@ -848,7 +848,7 @@ export default function App({ user }) {
 
     setLabels(updatedLabels);
     if (matched > 0) addLog({ type: 'image_sync', count: matched, summary: `이미지 자동 매핑: ${matched}개 라벨에 이미지 연결` });
-    alert(`라벨이미지 폴더에서 ${matched}개 라벨에 이미지가 매핑되었습니다.`);
+    setSavedNotice({ title: '이미지 매핑 완료', sub: `${matched}개 라벨에 이미지가 매핑되었습니다.` });
   };
 
   const downloadCSVTemplate = () => {
@@ -927,7 +927,7 @@ export default function App({ user }) {
 
       const duplicateCount = parsed.length - newLabels.length;
       if (newLabels.length === 0 && duplicateUpdates.length === 0) {
-        alert(`${parsed.length}개 데이터 확인 완료.\n모든 데이터가 이미 등록되어 있으며 업데이트할 항목이 없습니다.`);
+        setSavedNotice({ title: '확인 완료', sub: `${parsed.length}개 데이터 확인 완료. 모든 데이터가 이미 등록되어 있으며 업데이트할 항목이 없습니다.` });
         return;
       }
 
@@ -966,7 +966,7 @@ export default function App({ user }) {
     };
     setDocuments(prev => [csvDoc, ...prev.filter(d => !(d.category === '재고리스트' && d.name === file.name))]);
     setCsvImportPending(null);
-    alert(`완료: 신규 ${newLabels.length}개 등록, 기존 ${duplicateUpdates.length}개 업데이트 (총 ${total}개 처리)`);
+    setSavedNotice({ title: 'CSV 등록 완료', sub: `신규 ${newLabels.length}개 등록, 기존 ${duplicateUpdates.length}개 업데이트 (총 ${total}개 처리)` });
   };
 
   const addLabel = () => {
@@ -980,7 +980,7 @@ export default function App({ user }) {
   };
 
   const deleteLabel = (id) => {
-    if (window.confirm('이 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
+    setConfirmDialog({ title: '라벨 휴지통 이동', message: '이 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.', confirmText: '이동', danger: true, onConfirm: () => {
       const label = labels.find(l => l.id === id);
       if (label) moveToTrash('label', label); // 휴지통 보관 + 자동 로그 기록
       setLabels(prev => prev.filter(l => l.id !== id));
@@ -993,7 +993,7 @@ export default function App({ user }) {
         ...o,
         details: (o.details || []).filter(d => d.id !== id)
       })));
-    }
+    } });
   };
 
   // --- [2] 상품 BOM 관리 함수 ---
@@ -1052,14 +1052,14 @@ export default function App({ user }) {
   };
 
   const deleteProduct = (id) => {
-    if (window.confirm('이 상품을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) {
+    setConfirmDialog({ title: '상품 휴지통 이동', message: '이 상품을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.', confirmText: '이동', danger: true, onConfirm: () => {
       const prod = products.find(p => p.id === id);
       if (prod) moveToTrash('product', prod); // 휴지통 보관 + 자동 로그 기록
       setProducts(products.filter(p => p.id !== id));
       if (selectedProduct?.id === id) {
         setSelectedProduct(null);
       }
-    }
+    } });
   };
 
   const addLabelToBom = () => {
@@ -1619,18 +1619,19 @@ export default function App({ user }) {
   const restoreFromTrash = (trashId) => {
     const entry = trash.find(t => t.id === trashId);
     if (!entry) return;
-    if (!window.confirm(`"${entry.name}"을(를) 복구하시겠습니까?`)) return;
-    if (entry.type === 'label') {
-      setLabels(prev => [entry.data, ...prev.filter(l => l.id !== entry.data.id)]);
-      addLog({ type: 'add', labelName: entry.name, labelCode: entry.code, summary: `라벨 복구: ${entry.name} (${entry.code})` });
-    } else if (entry.type === 'product') {
-      setProducts(prev => [entry.data, ...prev.filter(p => p.id !== entry.data.id)]);
-      addLog({ type: 'product_add', productName: entry.name, productBrand: entry.brand, bomCount: entry.data.bom?.length || 0, summary: `상품 복구: ${entry.name} (${entry.brand})` });
-    } else if (entry.type === 'order') {
-      setSavedOrders(prev => [entry.data, ...prev.filter(o => o.id !== entry.data.id)]);
-      addLog({ type: 'order_save', productName: entry.name, summary: `발주 복구: ${entry.name}` });
-    }
-    setTrash(prev => prev.filter(t => t.id !== trashId));
+    setConfirmDialog({ title: '복구', message: `"${entry.name}"을(를) 복구하시겠습니까?`, confirmText: '복구', onConfirm: () => {
+      if (entry.type === 'label') {
+        setLabels(prev => [entry.data, ...prev.filter(l => l.id !== entry.data.id)]);
+        addLog({ type: 'add', labelName: entry.name, labelCode: entry.code, summary: `라벨 복구: ${entry.name} (${entry.code})` });
+      } else if (entry.type === 'product') {
+        setProducts(prev => [entry.data, ...prev.filter(p => p.id !== entry.data.id)]);
+        addLog({ type: 'product_add', productName: entry.name, productBrand: entry.brand, bomCount: entry.data.bom?.length || 0, summary: `상품 복구: ${entry.name} (${entry.brand})` });
+      } else if (entry.type === 'order') {
+        setSavedOrders(prev => [entry.data, ...prev.filter(o => o.id !== entry.data.id)]);
+        addLog({ type: 'order_save', productName: entry.name, summary: `발주 복구: ${entry.name}` });
+      }
+      setTrash(prev => prev.filter(t => t.id !== trashId));
+    } });
   };
 
   // 휴지통에서 영구 삭제 (관리자 전용)
@@ -1638,15 +1639,17 @@ export default function App({ user }) {
     if (!isAdmin) { alert('완전 삭제는 관리자만 가능합니다.'); return; }
     const entry = trash.find(t => t.id === trashId);
     if (!entry) return;
-    if (!window.confirm(`"${entry.name}"을(를) 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`)) return;
-    setTrash(prev => prev.filter(t => t.id !== trashId));
+    setConfirmDialog({ title: '완전 삭제', message: `"${entry.name}"을(를) 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`, confirmText: '완전 삭제', danger: true, onConfirm: () => {
+      setTrash(prev => prev.filter(t => t.id !== trashId));
+    } });
   };
 
   // 선택된 항목 일괄 영구 삭제 (관리자 전용)
   const permanentlyDeleteSelected = (ids) => {
     if (!isAdmin) { alert('완전 삭제는 관리자만 가능합니다.'); return; }
-    if (!window.confirm(`선택한 ${ids.length}건을 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`)) return;
-    setTrash(prev => prev.filter(t => !ids.includes(t.id)));
+    setConfirmDialog({ title: '완전 삭제', message: `선택한 ${ids.length}건을 완전히 삭제하시겠습니까?\n\n복구할 수 없습니다.`, confirmText: '완전 삭제', danger: true, onConfirm: () => {
+      setTrash(prev => prev.filter(t => !ids.includes(t.id)));
+    } });
   };
 
   // --- 자료실 ---
@@ -1781,16 +1784,17 @@ export default function App({ user }) {
     e.target.value = '';
   };
 
-  const deleteDocument = async (docItem) => {
-    if (!window.confirm(`"${docItem.name}" 을(를) 삭제하시겠습니까?`)) return;
-    // [M2 수정] storageName이 있을 때만 Storage 삭제 시도 (빈 값이면 경로 조립 시 오류)
-    if (docItem.storageName) {
-      try {
-        const storageRef = ref(storage, `documents/${docItem.storageName}`);
-        await deleteObject(storageRef).catch((e) => console.warn('[deleteDocument] Storage 파일 삭제 실패(이미 없을 수 있음):', e.message));
-      } catch(e) { console.error('[deleteDocument] Storage ref 생성 실패:', e); }
-    }
-    setDocuments(prev => prev.filter(d => d.id !== docItem.id));
+  const deleteDocument = (docItem) => {
+    setConfirmDialog({ title: '파일 삭제', message: `"${docItem.name}" 을(를) 삭제하시겠습니까?`, confirmText: '삭제', danger: true, onConfirm: async () => {
+      // [M2 수정] storageName이 있을 때만 Storage 삭제 시도 (빈 값이면 경로 조립 시 오류)
+      if (docItem.storageName) {
+        try {
+          const storageRef = ref(storage, `documents/${docItem.storageName}`);
+          await deleteObject(storageRef).catch((e) => console.warn('[deleteDocument] Storage 파일 삭제 실패(이미 없을 수 있음):', e.message));
+        } catch(e) { console.error('[deleteDocument] Storage ref 생성 실패:', e); }
+      }
+      setDocuments(prev => prev.filter(d => d.id !== docItem.id));
+    } });
   };
 
   const getDocLabelBrand = (doc) => {
@@ -1845,6 +1849,7 @@ export default function App({ user }) {
   const [calcResult, setCalcResult] = useState(null);
   const [calcResetConfirm, setCalcResetConfirm] = useState(false); // 취소(초기화) 인라인 확인
   const [savedNotice, setSavedNotice] = useState(null); // 저장 완료 알림(앱 내부, window.alert 대체) — { sub, onClose } | null
+  const [confirmDialog, setConfirmDialog] = useState(null); // 확인 대화상자(window.confirm 대체) — { title?, message, confirmText?, danger?, onConfirm } | null
   const [calcLabelPopup, setCalcLabelPopup] = useState(null);
   const [pdfPreview, setPdfPreview] = useState(null); // { url, filename }
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -3220,8 +3225,7 @@ export default function App({ user }) {
                 <button onClick={() => { setBulkEditFields({ vendor: '', type: '', brand: '' }); setShowBulkEditModal(true); }} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">
                   <Pencil size={13} /> 일괄 수정
                 </button>
-                <button onClick={() => {
-                  if (!window.confirm(`선택한 ${selectedLabelIds.size}개 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.`)) return;
+                <button onClick={() => setConfirmDialog({ title: '라벨 일괄 휴지통 이동', message: `선택한 ${selectedLabelIds.size}개 라벨을 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.`, confirmText: '이동', danger: true, onConfirm: () => {
                   const deletedLabels = labels.filter(l => selectedLabelIds.has(l.id));
                   // 각 라벨을 휴지통으로 이동 (자동 로그 기록 포함)
                   deletedLabels.forEach(l => moveToTrash('label', l, { skipLog: true }));
@@ -3229,7 +3233,7 @@ export default function App({ user }) {
                   // 일괄 삭제는 요약 로그 1건만 추가
                   addLog({ type: 'bulk_delete', count: deletedLabels.length, labelNames: deletedLabels.map(l => `${l.name} (${l.code})`), summary: `일괄 삭제: ${deletedLabels.length}개 라벨` });
                   setSelectedLabelIds(new Set());
-                }} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
+                } })} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-colors">
                   <Trash2 size={13} /> 일괄 삭제
                 </button>
                 <button onClick={() => setSelectedLabelIds(new Set())} className="ml-auto text-xs text-slate-500 hover:text-slate-700">선택 해제</button>
@@ -4385,7 +4389,7 @@ export default function App({ user }) {
               <span className="text-sm font-normal text-slate-400">({savedOrders.length}건)</span>
             </h2>
             {savedOrders.length > 0 && (
-              <button onClick={() => { if (window.confirm('저장리스트를 전체 삭제할까요?')) { addLog({ type: 'order_delete_all', count: savedOrders.length, summary: `발주 저장리스트 전체 삭제 (${savedOrders.length}건)` }); setSavedOrders([]); } }} className="text-sm text-red-400 hover:text-red-600 font-medium">전체 삭제</button>
+              <button onClick={() => setConfirmDialog({ title: '저장리스트 전체 삭제', message: `발주 저장리스트 ${savedOrders.length}건을 전체 삭제할까요?`, confirmText: '전체 삭제', danger: true, onConfirm: () => { addLog({ type: 'order_delete_all', count: savedOrders.length, summary: `발주 저장리스트 전체 삭제 (${savedOrders.length}건)` }); setSavedOrders([]); } })} className="text-sm text-red-400 hover:text-red-600 font-medium">전체 삭제</button>
             )}
           </div>
 
@@ -4452,9 +4456,10 @@ export default function App({ user }) {
                                 </button>
                                 <button onClick={() => {
                                   setOpenOrderMenuId(null);
-                                  if (!window.confirm('이 발주를 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.')) return;
-                                  moveToTrash('order', order); // 휴지통 보관 + 자동 로그 기록
-                                  setSavedOrders(prev => prev.filter(o => o.id !== order.id));
+                                  setConfirmDialog({ title: '발주 휴지통 이동', message: '이 발주를 휴지통으로 이동하시겠습니까?\n\n복구는 [휴지통] 탭에서 가능합니다.', confirmText: '이동', danger: true, onConfirm: () => {
+                                    moveToTrash('order', order); // 휴지통 보관 + 자동 로그 기록
+                                    setSavedOrders(prev => prev.filter(o => o.id !== order.id));
+                                  } });
                                 }} className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-500">
                                   <Trash2 size={14} /> 삭제
                                 </button>
@@ -4707,6 +4712,25 @@ export default function App({ user }) {
                 }
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 확인 대화상자 (window.confirm 대체 — 브라우저 차단과 무관하게 항상 동작) */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4" onClick={() => setConfirmDialog(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-slate-800 mb-2">{confirmDialog.title || '확인'}</h3>
+            <p className="text-sm text-slate-500 mb-5 whitespace-pre-line">{confirmDialog.message}</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setConfirmDialog(null)} className="px-4 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-sm transition-colors">취소</button>
+              <button
+                onClick={() => { const cb = confirmDialog.onConfirm; setConfirmDialog(null); cb && cb(); }}
+                className={`px-4 py-2.5 rounded-lg text-white font-bold text-sm shadow transition-colors ${confirmDialog.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              >
+                {confirmDialog.confirmText || '확인'}
+              </button>
             </div>
           </div>
         </div>
@@ -5032,7 +5056,7 @@ export default function App({ user }) {
               <span className="text-sm font-normal text-slate-400">({stockLogs.length}건)</span>
             </h2>
             {stockLogs.length > 0 && (
-              <button onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+              <button onClick={() => setConfirmDialog({ title: '로그 전체 삭제', message: '재고 로그 전체를 삭제하시겠습니까?', confirmText: '전체 삭제', danger: true, onConfirm: () => setStockLogs([]) })}
                 className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors">
                 전체 삭제
               </button>
@@ -5442,7 +5466,7 @@ export default function App({ user }) {
                 <div className="flex items-center justify-between flex-wrap gap-3">
                   <span className="text-sm text-slate-500">총 {stockLogs.length}건 · 카테고리를 선택하세요</span>
                   {stockLogs.length > 0 && (
-                    <button onClick={() => { if (window.confirm('로그 전체를 삭제하시겠습니까?')) setStockLogs([]); }}
+                    <button onClick={() => setConfirmDialog({ title: '로그 전체 삭제', message: '재고 로그 전체를 삭제하시겠습니까?', confirmText: '전체 삭제', danger: true, onConfirm: () => setStockLogs([]) })}
                       className="text-xs text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors">
                       전체 삭제
                     </button>

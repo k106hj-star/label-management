@@ -3475,12 +3475,12 @@ export default function App({ user }) {
           <div className="p-6 max-w-5xl mx-auto space-y-6">
             <div>
               <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Warehouse size={22} className="text-teal-600"/> 공장별 재고</h2>
-              <p className="text-sm text-slate-500 mt-1">발주를 확정하면 해당 공장에 라벨이 입고되고, 제품 입고를 처리하면 라벨이 차감됩니다.</p>
+              <p className="text-sm text-slate-500 mt-1">발주를 확정하면 해당 공장에 라벨이 입고되고, 제품 사용을 처리하면 라벨이 차감됩니다.</p>
             </div>
 
             {/* 제품 입고 (발주 기준, 색상×사이즈) */}
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-5">
-              <h3 className="text-sm font-bold text-teal-900 mb-3">📥 제품 입고 (라벨 차감)</h3>
+              <h3 className="text-sm font-bold text-teal-900 mb-3">📥 제품 사용 (라벨 차감)</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">① 공장 선택</label>

@@ -2480,7 +2480,18 @@ export default function App({ user }) {
         }
 
         const html = `<div style="font-family:'맑은 고딕','Malgun Gothic','Apple SD Gothic Neo','나눔고딕',sans-serif;background:white;padding:16px;width:1100px;">
-          <h2 style="text-align:center;font-size:22px;margin:0 0 12px;font-weight:bold;">${vendor} 발주서</h2>
+          <h2 style="text-align:center;font-size:22px;margin:0 0 10px;font-weight:bold;">${vendor} 발주서</h2>
+          <!-- 부자재 챙긴 사람/확인한 사람 사인란 (표 왼쪽 상단) -->
+          <table style="border-collapse:collapse;font-size:11px;text-align:center;margin:0 0 8px 0;">
+            <tr>
+              <td style="border:1px solid #333;padding:3px 16px;font-weight:bold;background:#f2f2f2;">작업자</td>
+              <td style="border:1px solid #333;padding:3px 16px;font-weight:bold;background:#f2f2f2;">확인자</td>
+            </tr>
+            <tr>
+              <td style="border:1px solid #333;width:80px;height:52px;"></td>
+              <td style="border:1px solid #333;width:80px;height:52px;"></td>
+            </tr>
+          </table>
           <table style="border-collapse:collapse;width:100%;table-layout:fixed;">
             <colgroup>
               <col style="width:70px"/><col style="width:60px"/><col style="width:70px"/>

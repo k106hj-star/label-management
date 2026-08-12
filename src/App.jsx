@@ -2062,6 +2062,8 @@ export default function App({ user }) {
   const [usageBusy, setUsageBusy] = useState(false);            // 사용 처리/처리 취소 진행 중(버튼 로딩 표시)
   const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
   const _OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
+  const _SIZE_ORDER = ['s', 'm', 'l', 'xl', '2xl', '3xl', '4xl', '5xl']; // 사이즈 정렬 순서
+  const _sizeRank = (s) => { const i = _SIZE_ORDER.indexOf(_normSize(s)); return i >= 0 ? i : 100; }; // 표준 사이즈 외(one size/OS 등)는 뒤로
   // 공장 재고 항목: { received: 입고총량, used: 사용총량 }. 남은(사용가능)=received-used.
   // (예전 숫자 형식은 입고총량으로 간주)
   const _fsEntry = (v) => {
@@ -3808,7 +3810,14 @@ export default function App({ user }) {
                   </div>
                   {(() => {
                     const f = factoryStockTab || factoryList[0];
-                    const rows = labels.map(l => { const e = _fsEntry((l.factoryStock || {})[f]); return { l, received: e.received, used: e.used, remain: e.received - e.used }; }).filter(r => r.received !== 0 || r.used !== 0).sort((a, b) => b.remain - a.remain);
+                    const _rows0 = labels.map(l => { const e = _fsEntry((l.factoryStock || {})[f]); return { l, received: e.received, used: e.used, remain: e.received - e.used }; }).filter(r => r.received !== 0 || r.used !== 0);
+                    // 같은 라벨(라벨명+품번)끼리 묶고 그 안에서 사이즈 순(S,M,L,XL,2XL,3XL)으로 정렬. 그룹 순서는 남은 수량 많은 순 유지.
+                    const _grp = new Map();
+                    _rows0.forEach(r => { const k = `${r.l.name}|${r.l.code || ''}`; if (!_grp.has(k)) _grp.set(k, []); _grp.get(k).push(r); });
+                    const rows = [..._grp.values()]
+                      .map(g => ({ items: g.sort((a, b) => (_sizeRank(a.l.size) - _sizeRank(b.l.size)) || (b.remain - a.remain)), maxRemain: Math.max(...g.map(x => x.remain)) }))
+                      .sort((a, b) => b.maxRemain - a.maxRemain)
+                      .flatMap(x => x.items);
                     return (
                       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">{f} — {rows.length}종 보유</div>

@@ -2110,6 +2110,27 @@ export default function App({ user }) {
       if (rec > 0) { receivedSizeQty[k] = (receivedSizeQty[k] || 0) + rec; totalReceived += rec; }
     }));
     if (totalReceived <= 0) return alert('수량을 1개 이상 입력하세요.');
+    // 발주 수량 초과 검사 + 셀별 입력 델타(발주 수량 차감/복구용)
+    const usedDelta = {}; // { 'color|size': 입력수량 }
+    const curUsedBd = order.usedBreakdown || {};
+    let overCell = null;
+    colors.forEach(c => sizes.forEach(s => {
+      const key = `${c}|${s}`;
+      const input = parseInt(receiveGrid[key]) || 0;
+      if (input <= 0) return;
+      const ordered = Number(orderedMap[key] || 0);
+      const already = Number(curUsedBd[key] || 0);
+      if (!isUndo && input > ordered - already) { if (!overCell) overCell = { c, s, max: Math.max(0, ordered - already), undo: false }; }
+      else if (isUndo && input > already) { if (!overCell) overCell = { c, s, max: already, undo: true }; }
+      usedDelta[key] = input;
+    }));
+    if (overCell) {
+      const cellName = `${overCell.c ? overCell.c + ' ' : ''}${overCell.s}`;
+      setSavedNotice({ danger: true, title: overCell.undo ? '복구 수량 초과' : '발주 수량 초과', sub: overCell.undo
+        ? `'${cellName}' 칸은 복구할 수 있는 수량(${overCell.max.toLocaleString()}개)보다 많이 입력했습니다.`
+        : `'${cellName}' 칸은 남은 발주 수량(${overCell.max.toLocaleString()}개)보다 많이 입력했습니다.\n발주 수량 이내로 입력해 주세요.` });
+      return;
+    }
     // 라벨별 수량(비율 기준): 사이즈 전용은 해당 사이즈 비율, 공통(OS)은 전체 비율
     const consumeMap = {}; const summary = [];
     (order.details || []).forEach(d => {
@@ -2127,9 +2148,13 @@ export default function App({ user }) {
     transactionInProgress.current = true;
     try {
       let finalLabels = [];
+      let finalOrders = [];
+      let ordersUpdatedAt = null;
       await runTransaction(db, async (tx) => {
+        const ordersRead = await readShardedTx(tx, 'savedOrders'); // 발주 수량(usedBreakdown) 갱신 위해 최신 발주 읽기
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsLabels = labelsSnap.data()?.list || [];
+        const fsOrders = ordersRead.list;
         const updated = fsLabels.map(lbl => {
           const consume = consumeMap[lbl.id];
           if (!consume) return lbl;
@@ -2140,10 +2165,24 @@ export default function App({ user }) {
           fstock[factory] = { received: e.received, used: nextUsed };
           return { ...lbl, factoryStock: fstock };
         });
+        // 발주 수량 차감/복구: order.usedBreakdown 갱신 (0 ~ 원 발주수량 범위)
+        const targetOrder = fsOrders.find(o => o.id === order.id);
+        const baseUsed = { ...((targetOrder && targetOrder.usedBreakdown) || {}) };
+        Object.keys(usedDelta).forEach(key => {
+          const ordered = Number(orderedMap[key] || 0);
+          const cur = Number(baseUsed[key] || 0);
+          baseUsed[key] = Math.max(0, Math.min(ordered, cur + (isUndo ? -usedDelta[key] : usedDelta[key])));
+        });
+        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, usedBreakdown: baseUsed } : o);
         finalLabels = JSON.parse(JSON.stringify(updated));
+        finalOrders = JSON.parse(JSON.stringify(updatedOrders));
         tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
+        ordersUpdatedAt = writeShardedTx(tx, 'savedOrders', finalOrders, ordersRead.chunkCount);
       });
       setLabels(finalLabels);
+      setSavedOrders(finalOrders);
+      if (ordersUpdatedAt) ordersLastUpdatedAt.current = ordersUpdatedAt;
+      ordersLastWriteJson.current = JSON.stringify(finalOrders); // 저장 effect 중복 쓰기 방지
       addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: isUndo ? `사용 처리 취소: ${order.productName} ${totalReceived}개 · ${factory} 사용 수량 복구` : `제품 사용: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
       // 앱 내부 알림창(window.alert 차단 대비) → 닫으면 입력 그리드 초기화(최신화). 보유 현황은 setLabels로 이미 갱신됨.
       setSavedNotice({
@@ -3734,9 +3773,11 @@ export default function App({ user }) {
                               {sizes.map(s => {
                                 const ord = orderedMap[`${c}|${s}`];
                                 if (ord === undefined) return <td key={s} className="p-2.5 text-center text-slate-300">·</td>;
+                                const usedQ = Number((order.usedBreakdown || {})[`${c}|${s}`] || 0); // 이미 사용 처리된 수량
+                                const remainQ = Math.max(0, ord - usedQ); // 남은 발주 수량
                                 return (
                                   <td key={s} className="p-2 text-center">
-                                    <div className="text-[11px] text-slate-400 mb-0.5">발주 {ord.toLocaleString()}</div>
+                                    <div className={`text-[11px] mb-0.5 ${remainQ === 0 ? 'text-emerald-500 font-medium' : 'text-slate-400'}`} title={usedQ > 0 ? `원 발주 ${ord.toLocaleString()} · 사용 ${usedQ.toLocaleString()}` : undefined}>발주 {remainQ.toLocaleString()}</div>
                                     <input type="number" value={receiveGrid[`${c}|${s}`] || ''} onChange={e => setReceiveGrid(p => ({ ...p, [`${c}|${s}`]: e.target.value }))} placeholder="0" className="w-16 p-1 border border-teal-200 rounded text-center text-sm focus:outline-none focus:ring-1 focus:ring-teal-500" />
                                   </td>
                                 );

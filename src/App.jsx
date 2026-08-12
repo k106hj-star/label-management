@@ -2059,6 +2059,7 @@ export default function App({ user }) {
   const [receiveOrderSearchOpen, setReceiveOrderSearchOpen] = useState(false);
   const [receiveOrderId, setReceiveOrderId] = useState('');     // 사용 처리할 발주(주문) id
   const [receiveGrid, setReceiveGrid] = useState({});           // { 'color|size': 입고수량 }
+  const [usageBusy, setUsageBusy] = useState(false);            // 사용 처리/처리 취소 진행 중(버튼 로딩 표시)
   const _normSize = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, '');
   const _OS_VALUES = ['os', 'fr', 'onesize', '소', '대', '아우터', ''];
   // 공장 재고 항목: { received: 입고총량, used: 사용총량 }. 남은(사용가능)=received-used.
@@ -2094,9 +2095,9 @@ export default function App({ user }) {
     if (transactionInProgress.current) return; // 다른 재고 처리 진행 중 → 연타/중복 처리 방지
     const isUndo = mode === 'undo';
     const order = savedOrders.find(o => o.id === parseInt(receiveOrderId));
-    if (!order) return alert('발주를 선택하세요.');
+    if (!order) { setSavedNotice({ danger: true, title: '발주 선택', sub: '먼저 발주품목을 선택하세요.' }); return; }
     const factory = (order.factory || '').trim();
-    if (!factory || factory === '-') return alert('이 발주에는 공장이 지정되어 있지 않습니다.');
+    if (!factory || factory === '-') { setSavedNotice({ danger: true, title: '공장 미지정', sub: '이 발주에는 공장이 지정되어 있지 않습니다.' }); return; }
     const { colors, sizes, orderedMap } = getOrderGrid(order);
     // 사이즈별 발주수량 / 입력수량 합계
     const orderedSizeQty = {}; let totalOrdered = 0;
@@ -2109,7 +2110,7 @@ export default function App({ user }) {
       totalOrdered += ord;
       if (rec > 0) { receivedSizeQty[k] = (receivedSizeQty[k] || 0) + rec; totalReceived += rec; }
     }));
-    if (totalReceived <= 0) return alert('수량을 1개 이상 입력하세요.');
+    if (totalReceived <= 0) { setSavedNotice({ danger: true, title: isUndo ? '복구할 수량 입력' : '수량 입력', sub: `${isUndo ? '복구(처리 취소)' : '사용 처리'}할 수량을 칸에 입력한 뒤 버튼을 눌러 주세요.` }); return; }
     // 발주 수량 초과 검사 + 셀별 입력 델타(발주 수량 차감/복구용)
     const usedDelta = {}; // { 'color|size': 입력수량 }
     const curUsedBd = order.usedBreakdown || {};
@@ -2142,10 +2143,11 @@ export default function App({ user }) {
       const consume = Math.round(Number(d.needQty || 0) * ratio);
       if (consume > 0) { consumeMap[d.id] = (consumeMap[d.id] || 0) + consume; summary.push(`• ${d.name}${d.size ? ' (' + d.size + ')' : ''}: ${consume.toLocaleString()}장`); }
     });
-    if (!Object.keys(consumeMap).length) return alert('처리할 라벨이 없습니다.');
+    if (!Object.keys(consumeMap).length) { setSavedNotice({ danger: true, title: '처리 대상 없음', sub: '처리할 라벨이 없습니다.' }); return; }
     // 확인창(window.confirm)은 브라우저 차단 시 무시되므로 바로 진행 → 성공 시 앱 내부 알림창.
     // 잘못 눌러도 '처리 취소'로 복구 가능.
     transactionInProgress.current = true;
+    setUsageBusy(true); // 버튼 '처리 중...' 표시
     try {
       let finalLabels = [];
       let finalOrders = [];
@@ -2192,9 +2194,10 @@ export default function App({ user }) {
       });
     } catch(e) {
       console.error('[processUsage] 실패:', e);
-      alert((isUndo ? '처리 취소' : '사용 처리') + ' 중 오류: ' + e.message);
+      setSavedNotice({ danger: true, title: (isUndo ? '처리 취소' : '사용 처리') + ' 실패', sub: '처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.\n(' + e.message + ')' });
     } finally {
       transactionInProgress.current = false;
+      setUsageBusy(false);
     }
   };
 
@@ -3791,8 +3794,8 @@ export default function App({ user }) {
                 );
               })()}
               <div className="mt-3 flex justify-end gap-2">
-                <button onClick={() => processUsage('use')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">사용 처리 (라벨 차감)</button>
-                <button onClick={() => processUsage('undo')} disabled={!receiveOrderId} className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-600 rounded-lg text-sm font-bold shadow-sm">처리 취소 (복구)</button>
+                <button onClick={() => processUsage('use')} disabled={!receiveOrderId || usageBusy} className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-sm font-bold shadow-sm">{usageBusy ? '처리 중...' : '사용 처리 (라벨 차감)'}</button>
+                <button onClick={() => processUsage('undo')} disabled={!receiveOrderId || usageBusy} className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 disabled:bg-slate-100 disabled:cursor-not-allowed text-slate-600 rounded-lg text-sm font-bold shadow-sm">{usageBusy ? '처리 중...' : '처리 취소 (복구)'}</button>
               </div>
             </div>
 

@@ -2150,13 +2150,11 @@ export default function App({ user }) {
     setUsageBusy(true); // 버튼 '처리 중...' 표시
     try {
       let finalLabels = [];
-      let finalOrders = [];
-      let ordersUpdatedAt = null;
+      // [속도개선] 라벨(공장 재고)만 트랜잭션으로 원자 처리 → 빠른 커밋.
+      // 발주 수량(usedBreakdown)은 아래에서 로컬 반영 + 저장 effect가 백그라운드로 저장(응답 대기 제거).
       await runTransaction(db, async (tx) => {
-        const ordersRead = await readShardedTx(tx, 'savedOrders'); // 발주 수량(usedBreakdown) 갱신 위해 최신 발주 읽기
         const labelsSnap = await tx.get(doc(db, 'settings', 'labels'));
         const fsLabels = labelsSnap.data()?.list || [];
-        const fsOrders = ordersRead.list;
         const updated = fsLabels.map(lbl => {
           const consume = consumeMap[lbl.id];
           if (!consume) return lbl;
@@ -2167,24 +2165,21 @@ export default function App({ user }) {
           fstock[factory] = { received: e.received, used: nextUsed };
           return { ...lbl, factoryStock: fstock };
         });
-        // 발주 수량 차감/복구: order.usedBreakdown 갱신 (0 ~ 원 발주수량 범위)
-        const targetOrder = fsOrders.find(o => o.id === order.id);
-        const baseUsed = { ...((targetOrder && targetOrder.usedBreakdown) || {}) };
+        finalLabels = JSON.parse(JSON.stringify(updated));
+        tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
+      });
+      setLabels(finalLabels);
+      // 발주 수량 차감/복구: order.usedBreakdown 갱신 (0 ~ 원 발주수량 범위). 저장 effect가 백그라운드 저장.
+      setSavedOrders(prev => prev.map(o => {
+        if (o.id !== order.id) return o;
+        const baseUsed = { ...(o.usedBreakdown || {}) };
         Object.keys(usedDelta).forEach(key => {
           const ordered = Number(orderedMap[key] || 0);
           const cur = Number(baseUsed[key] || 0);
           baseUsed[key] = Math.max(0, Math.min(ordered, cur + (isUndo ? -usedDelta[key] : usedDelta[key])));
         });
-        const updatedOrders = fsOrders.map(o => o.id === order.id ? { ...o, usedBreakdown: baseUsed } : o);
-        finalLabels = JSON.parse(JSON.stringify(updated));
-        finalOrders = JSON.parse(JSON.stringify(updatedOrders));
-        tx.set(doc(db, 'settings', 'labels'), { list: finalLabels });
-        ordersUpdatedAt = writeShardedTx(tx, 'savedOrders', finalOrders, ordersRead.chunkCount);
-      });
-      setLabels(finalLabels);
-      setSavedOrders(finalOrders);
-      if (ordersUpdatedAt) ordersLastUpdatedAt.current = ordersUpdatedAt;
-      ordersLastWriteJson.current = JSON.stringify(finalOrders); // 저장 effect 중복 쓰기 방지
+        return { ...o, usedBreakdown: baseUsed };
+      }));
       addLog({ type: 'factory_receive', factory, productName: order.productName, qty: totalReceived, summary: isUndo ? `사용 처리 취소: ${order.productName} ${totalReceived}개 · ${factory} 사용 수량 복구` : `제품 사용: ${order.productName} ${totalReceived}개 · ${factory} 라벨 차감` });
       // 앱 내부 알림창(window.alert 차단 대비) → 닫으면 입력 그리드 초기화(최신화). 보유 현황은 setLabels로 이미 갱신됨.
       setSavedNotice({
